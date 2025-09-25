@@ -94,3 +94,37 @@ class ArabicPasswordChangeForm(PasswordChangeForm):
         self.fields['old_password'].label = "كلمة المرور الحالية"
         self.fields['new_password1'].label = "كلمة المرور الجديدة"
         self.fields['new_password2'].label = "تأكيد كلمة المرور"
+
+#-------------------------------------------------------------------------------------------------------
+from .models import Category, Product, Branch
+
+class CategoryForm(forms.ModelForm):
+    class Meta:
+        model = Category
+        fields = ["name", "description"]
+        widgets = {
+            "name": forms.TextInput(attrs={"class": "form-control", "placeholder": "اسم القسم"}),
+            "description": forms.Textarea(attrs={"class": "form-control", "placeholder": "الوصف", "rows": 2}),
+        }
+
+class ProductForm(forms.ModelForm):
+    class Meta:
+        model = Product
+        fields = ["name", "description", "price", "unit", "category"]
+        widgets = {
+            "name": forms.TextInput(attrs={"class": "form-control", "placeholder": "اسم المنتج"}),
+            "description": forms.Textarea(attrs={"class": "form-control", "placeholder": "الوصف", "rows": 2}),
+            "price": forms.NumberInput(attrs={"class": "form-control"}),
+            "unit": forms.Select(attrs={"class": "form-select"}),
+            "category": forms.Select(attrs={"class": "form-select"}),
+        }
+
+class BranchForm(forms.ModelForm):
+    class Meta:
+        model = Branch
+        fields = ["name", "address", "phone"]
+        widgets = {
+            "name": forms.TextInput(attrs={"class": "form-control", "placeholder": "اسم الفرع"}),
+            "address": forms.Textarea(attrs={"class": "form-control", "rows": 2}),
+            "phone": forms.TextInput(attrs={"class": "form-control", "placeholder": "رقم التليفون"}),
+        }

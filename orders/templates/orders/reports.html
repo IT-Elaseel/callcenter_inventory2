@@ -2,59 +2,57 @@
 {% block title %}لوحة الفرع{% endblock %}
 
 {% block content %}
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Reports</title>
-    <style>
-        body { font-family: Arial, sans-serif; }
-        .box { border: 1px solid #ccc; padding: 15px; margin: 10px; display: inline-block; }
-        table { border-collapse: collapse; width: 100%; margin-top: 20px; }
-        th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
-        th { background: #f4f4f4; }
-    </style>
-</head>
-<body>
+<div class="container mt-4">
     <h1>📊 لوحة التقارير</h1>
+
     <!-- Filter by date -->
-    <form method="get">
-        من: <input type="date" name="start_date" value="{{ start_date }}">
-        إلى: <input type="date" name="end_date" value="{{ end_date }}">
-        <button type="submit">عرض</button>
+    <form method="get" class="mb-3 d-flex gap-2">
+        <input type="date" class="form-control" name="start_date" value="{{ start_date }}">
+        <input type="date" class="form-control" name="end_date" value="{{ end_date }}">
+        <button type="submit" class="btn btn-primary">عرض</button>
     </form>
 
     <!-- Stats -->
-    <div class="box">إجمالي الحجوزات: {{ stats.total }}</div>
-    <div class="box">✅ Confirmed: {{ stats.confirmed }}</div>
-    <div class="box">🕒 Pending: {{ stats.pending }}</div>
-    <div class="box">❌ Cancelled: {{ stats.cancelled }}</div>
+    <div class="row text-center mb-4">
+        <div class="col-md-3"><div class="alert alert-secondary">إجمالي الحجوزات: {{ stats.total }}</div></div>
+        <div class="col-md-3"><div class="alert alert-success">✅ Confirmed: {{ stats.confirmed }}</div></div>
+        <div class="col-md-3"><div class="alert alert-warning">🕒 Pending: {{ stats.pending }}</div></div>
+        <div class="col-md-3"><div class="alert alert-danger">❌ Cancelled: {{ stats.cancelled }}</div></div>
+    </div>
 
     <!-- Top Products -->
     <h2>أكثر المنتجات طلبًا</h2>
-    <table>
-        <tr><th>Product</th><th>Total Reservations</th></tr>
-        {% for p in top_products %}
-        <tr><td>{{ p.product__name }}</td><td>{{ p.total }}</td></tr>
-        {% empty %}
-        <tr><td colspan="2">لا يوجد بيانات</td></tr>
-        {% endfor %}
+    <table class="table table-bordered table-striped text-center">
+        <thead class="table-dark">
+            <tr><th>Product</th><th>Total Reservations</th></tr>
+        </thead>
+        <tbody>
+            {% for p in top_products %}
+            <tr><td>{{ p.product__name }}</td><td>{{ p.total }}</td></tr>
+            {% empty %}
+            <tr><td colspan="2">لا يوجد بيانات</td></tr>
+            {% endfor %}
+        </tbody>
     </table>
 
     <!-- Top Branches -->
     <h2>أفضل الفروع أداءً</h2>
-    <table>
-        <tr><th>Branch</th><th>Total Reservations</th></tr>
-        {% for b in top_branches %}
-        <tr><td>{{ b.branch__name }}</td><td>{{ b.total }}</td></tr>
-        {% empty %}
-        <tr><td colspan="2">لا يوجد بيانات</td></tr>
-        {% endfor %}
+    <table class="table table-bordered table-striped text-center">
+        <thead class="table-dark">
+            <tr><th>Branch</th><th>Total Reservations</th></tr>
+        </thead>
+        <tbody>
+            {% for b in top_branches %}
+            <tr><td>{{ b.branch__name }}</td><td>{{ b.total }}</td></tr>
+            {% empty %}
+            <tr><td colspan="2">لا يوجد بيانات</td></tr>
+            {% endfor %}
+        </tbody>
     </table>
-    <p>
-    📥 Export:
-    <a href="{% url 'export_reservations_excel' %}">Excel</a> |
-    <a href="{% url 'export_reservations_pdf' %}">PDF</a>
-</p>
-</body>
-</html>
+
+    <p class="mt-3">
+        📥 Export:
+        <a href="{% url 'export_reports_excel' %}?start_date={{ start_date }}&end_date={{ end_date }}" class="btn btn-sm btn-success">Excel</a>
+    </p>
+</div>
 {% endblock %}

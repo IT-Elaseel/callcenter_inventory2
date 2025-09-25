@@ -1,0 +1,63 @@
+{% extends "orders/base.html" %}
+{% block title %}إدارة المستخدمين{% endblock %}
+{% block content %}
+<div class="container mt-4">
+  <h2>👥 إدارة المستخدمين</h2>
+
+  <!-- ✅ الفلاتر -->
+  <form method="get" class="row mb-3 g-2">
+    <div class="col-md-4">
+      <input type="text" name="username" class="form-control" placeholder="🔍 ابحث بالاسم"
+             value="{{ username|default:'' }}">
+    </div>
+    <div class="col-md-4">
+      <select name="role" class="form-select">
+        <option value="">-- اختر النوع --</option>
+        <option value="admin" {% if role == "admin" %}selected{% endif %}>👑 مدير</option>
+        <option value="branch" {% if role == "branch" %}selected{% endif %}>🏪 فرع</option>
+        <option value="callcenter" {% if role == "callcenter" %}selected{% endif %}>📞 كول سنتر</option>
+      </select>
+    </div>
+    <div class="col-md-4">
+      <button type="submit" class="btn btn-primary w-100">تصفية</button>
+    </div>
+  </form>
+
+  <!-- ✅ جدول المستخدمين -->
+  <table class="table table-striped table-bordered">
+    <thead class="table-dark">
+      <tr>
+        <th>#</th>
+        <th>اسم المستخدم</th>
+        <th>البريد</th>
+        <th>الدور</th>
+        <th>إجراءات</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+        <tr>
+          <td>{{ forloop.counter }}</td>
+          <td>{{ u.username }}</td>
+          <td>{{ u.email }}</td>
+          <td>{{ u.userprofile.role }}</td>
+          <td>
+            <form method="post" action="{% url 'manage_users' %}" class="d-inline">
+              {% csrf_token %}
+              <button type="submit" name="reset_password" value="{{ u.id }}" class="btn btn-sm btn-warning">🔑 إعادة تعيين</button>
+            </form>
+            <form method="post" action="{% url 'manage_users' %}" class="d-inline">
+              {% csrf_token %}
+              <button type="submit" name="delete_user" value="{{ u.id }}" class="btn btn-sm btn-danger">🗑 حذف</button>
+            </form>
+          </td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="5" class="text-center">لا يوجد مستخدمين</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

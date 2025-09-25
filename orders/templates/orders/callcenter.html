@@ -120,31 +120,56 @@
 </div>
 
 <style>
-    html, body { height: 100%; margin: 0; }
-    .cc-dashboard { display: flex; flex-direction: column; height: 100vh; }
+    html, body {
+        height: 100%;
+        margin: 0;
+        overflow: hidden;   /* ❌ يمنع المسطرة الخارجية */
+    }
+
+    .cc-dashboard {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        overflow: hidden;   /* ❌ يمنع أي Scroll إضافي */
+    }
+
     .header-fixed { position: sticky; top: 0; background: #fff; z-index: 20; padding-bottom: 10px; }
-    .table-wrapper { flex: 1 1 auto; overflow-y: auto; border:1px solid #ddd; border-radius:8px; }
+
+    .table-wrapper {
+        flex: 1 1 auto;
+        overflow-y: auto;   /* ✅ المسطرة الداخلية للجدول فقط */
+        border:1px solid #ddd;
+        border-radius:8px;
+    }
+
     .styled-table { width:100%; border-collapse:collapse; font-size:15px; }
     .styled-table th, .styled-table td { padding:12px; text-align:center; border:1px solid #eee; }
     .styled-table th { position: sticky; top: 0; background:#f8f9fa; z-index: 5; font-size:16px; box-shadow:0 2px 4px rgba(0,0,0,0.05); }
-    body { font-family: "Cairo", "Segoe UI", Tahoma, sans-serif; font-size: 16px; color: #333; }
+
+
     .page-title { font-size:28px; margin-bottom:25px; color:#222; font-weight:700; }
     .section-title { font-size:20px; margin:20px 0; color:#444; font-weight:600; }
+
     .cc-filters { display:flex; gap:10px; margin-bottom:20px; align-items:center; flex-wrap:wrap; }
     .input-wrapper { position:relative; flex:1; }
     .input-wrapper input { width:100%; padding:10px 14px 10px 40px; border:1px solid #bbb; border-radius:25px; font-size:15px; background:#f9f9f9; transition: all 0.2s ease; }
     .input-wrapper::before { content:"🔍"; position:absolute; left:14px; top:50%; transform:translateY(-50%); font-size:16px; color:#777; }
+
     .select-wrapper { position:relative; min-width:200px; }
     .select-wrapper select { width:100%; padding:10px 40px 10px 14px; border:1px solid #bbb; border-radius:25px; font-size:15px; background:#f9f9f9; appearance:none; outline:none; }
     .select-wrapper::after { content:"📂"; position:absolute; right:14px; top:50%; transform:translateY(-50%); font-size:16px; color:#777; pointer-events:none; }
+
     .btn { padding:10px 22px; border:none; border-radius:25px; cursor:pointer; font-weight:600; font-size:15px; text-decoration:none; }
     .btn-primary { background:#007bff; color:white; }
     .btn-secondary { background:#6c757d; color:white; }
     .btn-success { background:#28a745; color:white; }
     .btn-warning { background:#ffc107; color:black; }
+
     .alert { padding:14px; border-radius:8px; margin-bottom:20px; font-size:15px; }
     .alert.warning { background:#fff3cd; border:1px solid #ffeeba; }
+
     .low-stock { background:#ffe5e5; font-weight:bold; color:#c00; }
+
     .reserve-form { display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:center; font-size:15px; }
     .reserve-form input, .reserve-form select { padding:8px 10px; border:1px solid #ccc; border-radius:6px; font-size:15px; }
     .reserve-form button { font-size:15px; margin-top:5px; }

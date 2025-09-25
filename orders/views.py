@@ -303,60 +303,77 @@ def reports(request):
     )
 
 #-------------------------------------------------------------
-def export_reservations_excel(request):
-    reservations = Reservation.objects.select_related("product", "branch").order_by("-created_at")
+import openpyxl
+from django.http import HttpResponse
+from django.db.models import Count, Q
+from datetime import datetime
 
+@login_required
+@role_required(["admin", "branch"])
+def export_reports_excel(request):
+    start_date = request.GET.get("start_date")
+    end_date = request.GET.get("end_date")
+
+    reservations = Reservation.objects.all()
+    if start_date:
+        reservations = reservations.filter(created_at__gte=start_date)
+    if end_date:
+        reservations = reservations.filter(created_at__lte=end_date)
+
+    # ✅ الإحصائيات
+    stats = {
+        "total": reservations.count(),
+        "confirmed": reservations.filter(status="confirmed").count(),
+        "pending": reservations.filter(status="pending").count(),
+        "cancelled": reservations.filter(status="cancelled").count(),
+    }
+
+    # ✅ أكثر المنتجات
+    top_products = (
+        reservations.values("product__name")
+        .annotate(total=Count("id"))
+        .order_by("-total")[:10]
+    )
+
+    # ✅ أفضل الفروع
+    top_branches = (
+        reservations.values("branch__name")
+        .annotate(total=Count("id"))
+        .order_by("-total")[:10]
+    )
+
+    # ✅ إنشاء ملف Excel
     wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Reservations"
 
-    # Header
-    ws.append(["ID", "Customer", "Phone", "Product", "Branch", "Delivery Type", "Status", "Created At"])
+    # Sheet 1: Stats
+    ws1 = wb.active
+    ws1.title = "Stats"
+    ws1.append(["إحصائية", "القيمة"])
+    ws1.append(["إجمالي الحجوزات", stats["total"]])
+    ws1.append(["✅ Confirmed", stats["confirmed"]])
+    ws1.append(["🕒 Pending", stats["pending"]])
+    ws1.append(["❌ Cancelled", stats["cancelled"]])
 
-    # Data
-    for r in reservations:
-        ws.append([
-            r.id,
-            r.customer_name,
-            r.customer_phone,
-            r.product.name,
-            r.branch.name,
-            r.get_delivery_type_display(),
-            r.get_status_display(),
-            r.created_at.strftime("%Y-%m-%d %H:%M"),
-        ])
+    # Sheet 2: Top Products
+    ws2 = wb.create_sheet("Top Products")
+    ws2.append(["Product", "Total Reservations"])
+    for p in top_products:
+        ws2.append([p["product__name"], p["total"]])
 
-    # Response
-    response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    response["Content-Disposition"] = 'attachment; filename="reservations.xlsx"'
+    # Sheet 3: Top Branches
+    ws3 = wb.create_sheet("Top Branches")
+    ws3.append(["Branch", "Total Reservations"])
+    for b in top_branches:
+        ws3.append([b["branch__name"], b["total"]])
+
+    # ✅ Response
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = 'attachment; filename="reports.xlsx"'
     wb.save(response)
     return response
-#-------------------------------------------------------------
-def export_reservations_pdf(request):
-    reservations = Reservation.objects.select_related("product", "branch").order_by("-created_at")
 
-    response = HttpResponse(content_type="application/pdf")
-    response["Content-Disposition"] = 'attachment; filename="reservations.pdf"'
-
-    p = canvas.Canvas(response, pagesize=A4)
-    width, height = A4
-
-    y = height - 50
-    p.setFont("Helvetica", 12)
-    p.drawString(50, y, "Reservations Report")
-    y -= 30
-
-    for r in reservations:
-        line = f"{r.id} | {r.customer_name} | {r.customer_phone} | {r.product.name} | {r.branch.name} | {r.get_status_display()} | {r.created_at.strftime('%Y-%m-%d')}"
-        p.drawString(50, y, line)
-        y -= 20
-        if y < 50:
-            p.showPage()
-            y = height - 50
-
-    p.showPage()
-    p.save()
-    return response
 #-------------------------------------------------------------
 @login_required
 @role_required(["callcenter"])
@@ -698,6 +715,8 @@ def export_inventory_excel(request, branch_id=None):
     wb.save(response)
     return response
 #-------------------------------------------------------------------
+from django.core.paginator import Paginator
+
 @login_required
 @role_required(["admin", "callcenter"])
 def customers_list(request):
@@ -707,7 +726,14 @@ def customers_list(request):
     if query:
         customers = customers.filter(name__icontains=query) | customers.filter(phone__icontains=query)
 
-    return render(request, "orders/customers_list.html", {"customers": customers})
+    # ✅ Pagination: 10 عملاء في كل صفحة
+    paginator = Paginator(customers, 10)
+    page_number = request.GET.get("page")
+    customers_page = paginator.get_page(page_number)
+
+    return render(request, "orders/customers_list.html", {
+        "customers": customers_page,
+    })
 #-------------------------------------------------------------------
 def landing(request):
     if request.method == "POST":
@@ -1072,5 +1098,203 @@ def change_password(request):
 
     return redirect("home")
 
+
+#-------------------------------------------------------------------------------------------------------
+from .forms import CategoryForm, ProductForm, BranchForm
+from django.contrib.auth.decorators import user_passes_test
+
+def is_admin(user):
+    return user.is_superuser or user.groups.filter(name="admin").exists()
+
+@login_required
+@user_passes_test(is_admin)
+def manage_data(request):
+    categories = Category.objects.all()
+    products = Product.objects.all()
+    branches = Branch.objects.all()
+
+    success_message = None
+
+    # دايمًا اعمل تعريف أولي للفورمات
+    cat_form = CategoryForm(prefix="cat")
+    prod_form = ProductForm(prefix="prod")
+    branch_form = BranchForm(prefix="branch")
+
+    if request.method == "POST":
+        if "add_category" in request.POST:
+            cat_form = CategoryForm(request.POST, prefix="cat")
+            if cat_form.is_valid():
+                cat_form.save()
+                success_message = "✅ تم إضافة القسم بنجاح"
+                cat_form = CategoryForm(prefix="cat")  # reset
+
+        elif "add_product" in request.POST:
+            prod_form = ProductForm(request.POST, prefix="prod")
+            if prod_form.is_valid():
+                prod_form.save()
+                success_message = "✅ تم إضافة المنتج بنجاح"
+                prod_form = ProductForm(prefix="prod")
+
+        elif "add_branch" in request.POST:
+            branch_form = BranchForm(request.POST, prefix="branch")
+            if branch_form.is_valid():
+                branch_form.save()
+                success_message = "✅ تم إضافة الفرع بنجاح"
+                branch_form = BranchForm(prefix="branch")
+
+    return render(request, "orders/manage_data.html", {
+        "cat_form": cat_form,
+        "prod_form": prod_form,
+        "branch_form": branch_form,
+        "categories": categories,
+        "products": products,
+        "branches": branches,
+        "success_message": success_message,
+    })
+
+#-------------------------------------------------------------------------------------------------------
+from django.contrib.auth.models import User
+from django.conf import settings
+
+@login_required
+@user_passes_test(is_admin)
+def manage_users(request):
+    users = User.objects.all()
+
+    # ✅ فلترة بالاسم
+    username = request.GET.get("username", "")
+    if username:
+        users = users.filter(username__icontains=username)
+
+    # ✅ فلترة بالنوع (role)
+    role = request.GET.get("role", "")
+    if role:
+        users = users.filter(userprofile__role=role)
+
+    # ✅ POST (حذف أو إعادة تعيين باسورد)
+    if request.method == "POST":
+        if "delete_user" in request.POST:
+            user_id = request.POST.get("delete_user")
+            User.objects.filter(id=user_id).delete()
+
+        elif "reset_password" in request.POST:
+            user_id = request.POST.get("reset_password")
+            u = User.objects.get(id=user_id)
+            u.set_password(settings.DEFAULT_USER_PASSWORD)
+            u.save()
+
+        return redirect("manage_users")
+
+    return render(request, "orders/manage_users.html", {
+        "users": users,
+        "username": username,
+        "role": role,
+    })
+#-------------------------------------------------------------------------------------------------------
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth.decorators import login_required, user_passes_test
+from .forms import CategoryForm, ProductForm, BranchForm
+from .models import Category, Product, Branch
+
+def is_admin(user):
+    return user.is_superuser or user.groups.filter(name="admin").exists()
+
+@login_required
+@user_passes_test(is_admin)
+def edit_category(request, pk):
+    category = get_object_or_404(Category, pk=pk)
+    success = False
+    if request.method == "POST":
+        form = CategoryForm(request.POST, instance=category)
+        if form.is_valid():
+            form.save()
+            success = True
+    else:
+        form = CategoryForm(instance=category)
+
+    return render(request, "orders/edit_item.html", {
+        "form": form,
+        "title": "✏️ تعديل قسم",
+        "success": success,
+        "redirect_url": "view_data",
+    })
+
+
+@login_required
+@user_passes_test(is_admin)
+def edit_product(request, pk):
+    product = get_object_or_404(Product, pk=pk)
+    success = False
+    if request.method == "POST":
+        form = ProductForm(request.POST, instance=product)
+        if form.is_valid():
+            form.save()
+            success = True
+    else:
+        form = ProductForm(instance=product)
+
+    return render(request, "orders/edit_item.html", {
+        "form": form,
+        "title": "✏️ تعديل منتج",
+        "success": success,
+        "redirect_url": "view_data",
+    })
+
+
+@login_required
+@user_passes_test(is_admin)
+def edit_branch(request, pk):
+    branch = get_object_or_404(Branch, pk=pk)
+    success = False
+    if request.method == "POST":
+        form = BranchForm(request.POST, instance=branch)
+        if form.is_valid():
+            form.save()
+            success = True
+    else:
+        form = BranchForm(instance=branch)
+
+    return render(request, "orders/edit_item.html", {
+        "form": form,
+        "title": "✏️ تعديل فرع",
+        "success": success,
+        "redirect_url": "view_data",
+    })
+
+#-------------------------------------------------------------------------------------------------------
+@login_required
+@user_passes_test(is_admin)
+def view_data(request):
+    selected_table = request.GET.get("table", "categories")
+    query = request.GET.get("q", "")
+    success_message = None
+
+    # ✅ حذف داخل view_data بدل manage_data
+    if request.method == "POST":
+        if "delete_category" in request.POST:
+            Category.objects.filter(id=request.POST.get("delete_category")).delete()
+            success_message = "❌ تم حذف القسم بنجاح"
+        elif "delete_product" in request.POST:
+            Product.objects.filter(id=request.POST.get("delete_product")).delete()
+            success_message = "❌ تم حذف المنتج بنجاح"
+        elif "delete_branch" in request.POST:
+            Branch.objects.filter(id=request.POST.get("delete_branch")).delete()
+            success_message = "❌ تم حذف الفرع بنجاح"
+
+    categories = Category.objects.all()
+    products = Product.objects.all()
+    branches = Branch.objects.all()
+
+    if query and selected_table == "products":
+        products = products.filter(name__icontains=query)
+
+    return render(request, "orders/view_data.html", {
+        "categories": categories,
+        "products": products,
+        "branches": branches,
+        "selected_table": selected_table,
+        "query": query,
+        "success_message": success_message,
+    })
 
 #-------------------------------------------------------------------------------------------------------

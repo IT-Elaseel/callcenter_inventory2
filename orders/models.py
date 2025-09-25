@@ -10,6 +10,7 @@ from django.utils import timezone
 class Category(models.Model):
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
+    updated_at = models.DateTimeField(auto_now=True)  # ✅ يتحدث تلقائي مع أي تعديل
 
     def __str__(self):
         return self.name
@@ -25,6 +26,8 @@ class Product(models.Model):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     price = models.DecimalField(max_digits=10, decimal_places=2)
+    updated_at = models.DateTimeField(auto_now=True)  # ✅ يتحدث تلقائي عند أي تعديل
+
 
     UNIT_CHOICES = [
         ("piece", "عدد"),
@@ -40,6 +43,7 @@ class Branch(models.Model):
     name = models.CharField(max_length=100)
     address = models.TextField()
     phone = models.CharField(max_length=20, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)  # ✅ يتحدث تلقائي مع أي تعديل
 
     def __str__(self):
         return self.name

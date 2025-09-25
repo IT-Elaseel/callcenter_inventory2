@@ -1,45 +1,43 @@
-import os
 from pathlib import Path
+import os
 import environ
-import dj_database_url
 
+# Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# تهيئة env
+# Initialise environment variables
 env = environ.Env()
 environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
 
-# 🔹 مفاتيح أساسية
+# SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = env("SECRET_KEY", default="unsafe-secret-key")
-DEBUG = env.bool("DEBUG", default=False)
+
+# SECURITY WARNING: don't run with debug turned on in production!
+DEBUG = env.bool("DEBUG", default=True)
+
+# Hosts allowed
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["127.0.0.1", "localhost"])
 
-# 🔹 التطبيقات
+# Application definition
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
-
-    # Static files
-    "whitenoise.runserver_nostatic",  # ✅ إضافة WhiteNoise للـ dev
     "django.contrib.staticfiles",
-
-    # تطبيقاتك
     "orders",
 ]
 
-# 🔹 Middleware
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-    "whitenoise.middleware.WhiteNoiseMiddleware",  # ✅ إضافة WhiteNoise
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "orders.middleware.NoCacheMiddleware",
 ]
 
 ROOT_URLCONF = "sweets_factory.urls"
@@ -47,11 +45,10 @@ ROOT_URLCONF = "sweets_factory.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [BASE_DIR / "templates"],
+        "DIRS": [],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
-                "django.template.context_processors.debug",
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
@@ -63,47 +60,43 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "sweets_factory.wsgi.application"
 
-# 🔹 قاعدة البيانات
-DATABASE_URL = env("DATABASE_URL", default=None)
-if DATABASE_URL:
-    DATABASES = {"default": dj_database_url.parse(DATABASE_URL)}
-else:
-    DATABASES = {
-        "default": {
-            "ENGINE": env("DB_ENGINE", default="django.db.backends.postgresql"),
-            "NAME": env("DB_NAME", default="postgres"),
-            "USER": env("DB_USER", default="postgres"),
-            "PASSWORD": env("DB_PASSWORD", default=""),
-            "HOST": env("DB_HOST", default="127.0.0.1"),
-            "PORT": env("DB_PORT", default="5432"),
-        }
+# Database
+DATABASES = {
+    "default": {
+        "ENGINE": env("DB_ENGINE", default="django.db.backends.postgresql"),
+        "NAME": env("DB_NAME", default="postgres"),
+        "USER": env("DB_USER", default="postgres"),
+        "PASSWORD": env("DB_PASSWORD", default=""),
+        "HOST": env("DB_HOST", default="127.0.0.1"),
+        "PORT": env("DB_PORT", default="5432"),
     }
+}
 
-# 🔹 التحقق من الباسورد (سهل)
+# Password validation
 AUTH_PASSWORD_VALIDATORS = [
-    {
-        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
-        "OPTIONS": {"min_length": 4},
+    #{"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+    "OPTIONS": {"min_length": 4}
     }
+    #{"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    #{"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
-# لو عايز تلغي الشروط كلها: AUTH_PASSWORD_VALIDATORS = []
 
-# 🔹 اللغة والوقت
-LANGUAGE_CODE = "ar"
+# Internationalization
+LANGUAGE_CODE = "en-us"
 TIME_ZONE = "Africa/Cairo"
 USE_I18N = True
-USE_TZ = True
 
-# 🔹 الملفات الثابتة
-STATIC_URL = "/static/"
-STATIC_ROOT = BASE_DIR / "staticfiles"
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+# Static files (CSS, JavaScript, Images)
+STATIC_URL = "static/"
+STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
-# 🔹 ملفات الميديا (لو بتستخدمها)
-MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
-
+# Default primary key field type
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# 🔹 باسورد افتراضي (اختياري)
-DEFAULT_USER_PASSWORD = env("DEFAULT_USER_PASSWORD", default="12345678")
+# Authentication redirects
+LOGIN_URL = "/login/"
+LOGIN_REDIRECT_URL = "/"
+LOGOUT_REDIRECT_URL = "/login/"
+# settings.py
+DEFAULT_USER_PASSWORD = "12345678"  # ممكن تخليه من env كمان

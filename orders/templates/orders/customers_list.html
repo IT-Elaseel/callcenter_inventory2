@@ -2,77 +2,79 @@
 {% block title %}قائمة العملاء{% endblock %}
 
 {% block content %}
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Customers</title>
-    <style>
-        body { font-family: Arial, sans-serif; }
-        table { border-collapse: collapse; width: 100%; margin-top: 20px; }
-        th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
-        th { background: #f4f4f4; }
-        .btn {
-            padding: 5px 10px;
-            text-decoration: none;
-            border-radius: 4px;
-            border: 1px solid #ccc;
-            background-color: #f8f8f8;
-            color: #333;
-            font-size: 13px;
-            transition: background 0.3s, color 0.3s;
-        }
-        .btn:hover {
-            background-color: #007bff;
-            color: #fff;
-        }
-        .btn-new {
-            background-color: #28a745;
-            color: #fff;
-            border-color: #28a745;
-        }
-        .btn-new:hover {
-            background-color: #218838;
-        }
-    </style>
-</head>
-<body>
-    <h1>👥 قائمة العملاء</h1>
+<div class="container mt-4">
 
-    <form method="get">
-        <input type="text" name="q" placeholder="ابحث بالاسم أو التليفون" value="{{ request.GET.q|default:'' }}">
-        <button type="submit">بحث</button>
-    </form>
+  <h1 class="d-flex justify-content-between align-items-center">
+    👥 قائمة العملاء
+  </h1>
 
-    <table>
+  <!-- ✅ البحث + إضافة عميل جديد -->
+  <form method="get" class="mb-3 d-flex justify-content-between align-items-center" style="gap:10px;">
+    <div class="d-flex flex-grow-1" style="gap:10px;">
+      <input type="text" class="form-control" name="q" placeholder="ابحث بالاسم أو التليفون" value="{{ request.GET.q|default:'' }}" autofocus>
+      <button type="submit" class="btn btn-primary">بحث</button>
+    </div>
+    <a href="{% url 'add_customer' %}" class="btn btn-success">➕ إضافة عميل جديد</a>
+  </form>
+
+  <!-- ✅ الجدول -->
+  <div class="table-responsive">
+    <table class="table table-bordered table-striped text-center align-middle">
+      <thead class="table-dark">
         <tr>
-            <th>ID</th>
-            <th>الاسم</th>
-            <th>الموبايل</th>
-            <th>العنوان</th>
-            <th>عدد الحجوزات</th>
-            <th>إجراءات</th>
+          <th>ID</th>
+          <th>الاسم</th>
+          <th>الموبايل</th>
+          <th>العنوان</th>
+          <th>عدد الحجوزات</th>
+          <th>إجراءات</th>
         </tr>
+      </thead>
+      <tbody>
         {% for c in customers %}
         <tr>
-            <td>{{ c.id }}</td>
-            <td>{{ c.name }}</td>
-            <td>{{ c.phone }}</td>
-            <td>{{ c.address|default:"-" }}</td>
-            <td>{{ c.reservations.count }}</td>
-            <td>
-                <!-- زرار استخدام العميل -->
-                <a href="{% url 'use_customer' c.id %}" class="btn">✅ استخدام</a>
-            </td>
+          <td>{{ c.id }}</td>
+          <td>{{ c.name }}</td>
+          <td>{{ c.phone }}</td>
+          <td>{{ c.address|default:"-" }}</td>
+          <td>{{ c.reservations.count }}</td>
+          <td>
+            <a href="{% url 'use_customer' c.id %}" class="btn btn-sm btn-success">✅ استخدام</a>
+          </td>
         </tr>
         {% empty %}
         <tr><td colspan="6">لا يوجد عملاء</td></tr>
         {% endfor %}
+      </tbody>
     </table>
+  </div>
 
-    <p style="margin-top:15px;">
-        <!-- زرار إضافة عميل جديد -->
-        <a href="{% url 'add_customer' %}" class="btn btn-new">➕ إنشاء عميل جديد</a>
-    </p>
-</body>
-</html>
+  <!-- ✅ الـ Pagination -->
+  {% if customers.has_other_pages %}
+  <nav aria-label="Page navigation" class="mt-3">
+    <ul class="pagination justify-content-center">
+      {% if customers.has_previous %}
+        <li class="page-item"><a class="page-link" href="?page={{ customers.previous_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">السابق</a></li>
+      {% else %}
+        <li class="page-item disabled"><span class="page-link">السابق</span></li>
+      {% endif %}
+
+      {% for i in customers.paginator.page_range %}
+        {% if customers.number == i %}
+          <li class="page-item active"><span class="page-link">{{ i }}</span></li>
+        {% else %}
+          <li class="page-item"><a class="page-link" href="?page={{ i }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">{{ i }}</a></li>
+        {% endif %}
+      {% endfor %}
+
+      {% if customers.has_next %}
+        <li class="page-item"><a class="page-link" href="?page={{ customers.next_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">التالي</a></li>
+      {% else %}
+        <li class="page-item disabled"><span class="page-link">التالي</span></li>
+      {% endif %}
+    </ul>
+  </nav>
+  {% endif %}
+
+</div>
 {% endblock %}

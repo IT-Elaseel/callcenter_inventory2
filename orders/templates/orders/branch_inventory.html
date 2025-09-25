@@ -1,7 +1,7 @@
 {% extends "orders/base.html" %}
-{% block content %}
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+{% block title %}📦 المخزون{% endblock %}
 
+{% block content %}
 <h2>
   📦 المخزون
   {% if branch %}
@@ -13,13 +13,12 @@
 
 <!-- 🔽 فلترة الأقسام + البحث + الفروع -->
 <form method="get" class="mb-3" id="filterForm">
-  <div style="display:flex; gap:15px; align-items:flex-end; flex-wrap:wrap;">
+  <div class="d-flex flex-wrap gap-3 align-items-end">
 
-    <!-- ✅ فلتر الفروع (للأدمن والكول سنتر فقط) -->
     {% if branches %}
     <div class="form-group">
       <label class="form-label">الفرع:</label>
-      <select name="branch" class="form-control" onchange="this.form.submit()">
+      <select name="branch" class="form-select" onchange="this.form.submit()">
         <option value="all" {% if not selected_branch %}selected{% endif %}>-- كل الفروع --</option>
         {% for b in branches %}
           <option value="{{ b.id }}" {% if selected_branch == b.id %}selected{% endif %}>
@@ -30,10 +29,9 @@
     </div>
     {% endif %}
 
-    <!-- فلتر القسم -->
     <div class="form-group">
       <label class="form-label">القسم:</label>
-      <select name="category" class="form-control" onchange="this.form.submit()">
+      <select name="category" class="form-select" onchange="this.form.submit()">
         <option value="">-- كل الأقسام --</option>
         {% for c in categories %}
           <option value="{{ c.id }}" {% if selected_category == c.id %}selected{% endif %}>
@@ -43,7 +41,6 @@
       </select>
     </div>
 
-    <!-- البحث -->
     <div class="form-group">
       <label class="form-label">بحث:</label>
       <input type="text" class="form-control" name="q" value="{{ query|default:'' }}" placeholder="اسم المنتج">
@@ -57,19 +54,19 @@
 
 <!-- جدول المخزون -->
 <div class="table-responsive mt-4">
-  <table class="table table-bordered table-striped">
+  <table class="table table-bordered table-striped table-hover text-center align-middle">
     <thead class="table-dark">
       <tr>
-        <th>المنتج</th>
-        <th>القسم</th>
-        {% if branches %}<th>الفرع</th>{% endif %}
-        <th>الكمية المتوفرة</th>
+        <th style="width:40%;">المنتج</th>
+        <th style="width:20%;">القسم</th>
+        {% if branches %}<th style="width:20%;">الفرع</th>{% endif %}
+        <th style="width:20%;">الكمية المتوفرة</th>
       </tr>
     </thead>
     <tbody>
       {% for inv in inventories %}
       <tr>
-        <td>{{ inv.product.name }}</td>
+        <td class="text-start">{{ inv.product.name }}</td>
         <td>{{ inv.product.category.name }}</td>
         {% if branches %}<td>{{ inv.branch.name }}</td>{% endif %}
         <td>{{ inv.quantity }}</td>
@@ -83,8 +80,18 @@
   </table>
 </div>
 
+<!-- ✅ Hover Effect -->
+<style>
+  .table.table-hover tbody tr:hover > td {
+      background-color: #f8d7da !important; /* أحمر فاتح */
+      color: #000 !important;              /* النص يفضل واضح */
+      transition: background 0.2s ease;
+  }
+
+
+</style>
+
 <script>
-  // ✅ لما المستخدم يضغط Enter فى البحث → الفورم يتبعت
   document.querySelector("input[name='q']").addEventListener("keypress", function(e) {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -92,5 +99,4 @@
     }
   });
 </script>
-
 {% endblock %}

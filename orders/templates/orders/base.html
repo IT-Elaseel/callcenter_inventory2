@@ -12,7 +12,8 @@
     <style>
         body {
             margin: 0;
-            font-family: 'Cairo', 'Tahoma', sans-serif;
+            font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
+            font-size: 16px;
             background: #f8f9fa;
         }
 
@@ -90,53 +91,113 @@
         .navbar-user a:hover {
             text-decoration: underline;
         }
+        /* تنسيق القوائم المنسدلة */
+.dropdown-menu {
+    background: #4b3b72; /* لون بنفسجي غامق يليق بالـ navbar */
+    border-radius: 8px;
+    border: none;
+    padding: 8px 0;
+}
+
+.dropdown-menu .dropdown-item {
+    color: #fff !important;   /* النص أبيض */
+    font-weight: 500;
+    padding: 8px 16px;
+}
+
+.dropdown-menu .dropdown-item:hover {
+    background: rgba(255,255,255,0.15); /* خلفية فاتحة عند الوقوف */
+    color: #ffd700 !important;          /* النص دهبي عند الوقوف */
+    border-radius: 6px;
+    transition: 0.3s;
+}
+
     </style>
 </head>
 <body>
     <!-- ✅ البار العلوي -->
     <div class="navbar">
-        <div class="navbar-brand">
-            <span class="logo-icon">🍩</span>
-            <span class="logo-text">حَلواني الأَصِيل</span>
-        </div>
-
-        <div class="navbar-links">
-            {% if request.user.is_authenticated %}
-                {% with role=request.user.userprofile.role %}
-                    {% if role == "admin" %}
-                        <a href="/admin/">⚙️ الإدارة</a>
-                        <a href="{% url 'branch_inventory' %}">📦 المخزون</a>
-                        <a href="{% url 'reservations_list' %}">📑 الحجوزات</a>
-                        <a href="/inventory/transactions/">📜 سجل الإضافات</a>
-                        <a href="/customers/">👥 العملاء</a>
-                        <a href="/callcenter/">📞 الكول سنتر</a>
-                        <a href="/reports/">📊 التقارير</a>
-                        {% if user.is_authenticated and user.is_superuser %}
-                            <a href="{% url 'add_user' %}">➕ إضافة مستخدم</a>
-                        {% endif %}
-                    {% elif role == "callcenter" %}
-                        <a href="/callcenter/">📞 الكول سنتر</a>
-                        <a href="{% url 'reservations_list' %}">📑 الحجوزات</a>
-                        <a href="{% url 'branch_inventory' %}">📦 المخزون</a>
-                        <a href="/customers/">👥 العملاء</a>
-                    {% elif role == "branch" %}
-                        <a href="/">🏠 الرئيسية</a>
-                        <a href="{% url 'branch_inventory' %}">📦 المخزون</a>
-                        <a href="/inventory/update/">📦 تحديث المخزون</a>
-                        <a href="/inventory/transactions/">📜 سجل الإضافات</a>
-                        <a href="{% url 'reservations_list' %}">📑 الحجوزات</a>
-                    {% endif %}
-                {% endwith %}
-            {% endif %}
-        </div>
-
-        <div class="navbar-user">
-            👤 <a href="#" data-bs-toggle="modal" data-bs-target="#changePasswordModal" style="color:white; text-decoration:none;">
-                {{ request.user.username }}
-            </a> |
-            <a href="{% url 'logout' %}">🚪 خروج</a>
-        </div>
+    <div class="navbar-brand">
+        <span class="logo-icon">🍩</span>
+        <span class="logo-text">حَلواني الأَصِيل</span>
     </div>
+
+    <div class="navbar-links">
+      {% if request.user.is_authenticated %}
+        {% with role=request.user.userprofile.role %}
+          {% if role == "admin" %}
+
+            <!-- 🛠️ الإدارة -->
+            <div class="dropdown d-inline-block">
+              <a class="dropdown-toggle btn btn-sm text-white" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="background:rgba(255,255,255,0.15);">
+                ⚙️ الإدارة
+              </a>
+              <ul class="dropdown-menu shadow">
+                <li><a class="dropdown-item" href="/admin/">لوحة Django</a></li>
+                <li><a class="dropdown-item" href="{% url 'manage_users' %}">👥 إدارة المستخدمين</a></li>
+                <li><a class="dropdown-item" href="{% url 'manage_data' %}">🛠️ إدارة البيانات</a></li>
+                <li><a class="dropdown-item" href="{% url 'view_data' %}">📊 عرض البيانات</a></li>
+                <li><a class="dropdown-item" href="{% url 'add_user' %}">➕ إضافة مستخدم</a></li>
+              </ul>
+            </div>
+
+            <!-- 📦 المخزون -->
+            <div class="dropdown d-inline-block">
+              <a class="dropdown-toggle btn btn-sm text-white" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="background:rgba(255,255,255,0.15);">
+                📦 المخزون
+              </a>
+              <ul class="dropdown-menu shadow">
+                <li><a class="dropdown-item" href="{% url 'branch_inventory' %}">📦 عرض المخزون</a></li>
+                <li><a class="dropdown-item" href="/inventory/update/">📦 تحديث المخزون</a></li>
+                <li><a class="dropdown-item" href="/inventory/transactions/">📜 سجل الإضافات</a></li>
+              </ul>
+            </div>
+
+            <!-- 📑 الحجوزات -->
+            <div class="dropdown d-inline-block">
+              <a class="dropdown-toggle btn btn-sm text-white" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="background:rgba(255,255,255,0.15);">
+                📑 الحجوزات
+              </a>
+              <ul class="dropdown-menu shadow">
+                <li><a class="dropdown-item" href="{% url 'reservations_list' %}">📑 قائمة الحجوزات</a></li>
+              </ul>
+            </div>
+
+            <!-- 👥 العملاء -->
+            <a href="/customers/" class="btn btn-sm text-white" style="background:rgba(255,255,255,0.15);">👥 العملاء</a>
+
+            <!-- 📞 الكول سنتر -->
+            <a href="/callcenter/" class="btn btn-sm text-white" style="background:rgba(255,255,255,0.15);">📞 الكول سنتر</a>
+
+            <!-- 📊 التقارير -->
+            <a href="/reports/" class="btn btn-sm text-white" style="background:rgba(255,255,255,0.15);">📊 التقارير</a>
+
+          {% elif role == "callcenter" %}
+            <!-- الكول سنتر -->
+            <a href="/callcenter/" class="btn btn-sm text-white">📞 الكول سنتر</a>
+            <a href="{% url 'reservations_list' %}" class="btn btn-sm text-white">📑 الحجوزات</a>
+            <a href="{% url 'branch_inventory' %}" class="btn btn-sm text-white">📦 المخزون</a>
+            <a href="/customers/" class="btn btn-sm text-white">👥 العملاء</a>
+
+          {% elif role == "branch" %}
+            <a href="/" class="btn btn-sm text-white">🏠 الرئيسية</a>
+            <a href="{% url 'branch_inventory' %}" class="btn btn-sm text-white">📦 المخزون</a>
+            <a href="/inventory/update/" class="btn btn-sm text-white">📦 تحديث المخزون</a>
+            <a href="/inventory/transactions/" class="btn btn-sm text-white">📜 سجل الإضافات</a>
+            <a href="{% url 'reservations_list' %}" class="btn btn-sm text-white">📑 الحجوزات</a>
+          {% endif %}
+        {% endwith %}
+      {% endif %}
+    </div>
+
+    <div class="navbar-user">
+      👤 <a href="#" data-bs-toggle="modal" data-bs-target="#changePasswordModal" style="color:white; text-decoration:none;">
+          {{ request.user.username }}
+      </a> |
+      <a href="{% url 'logout' %}">🚪 خروج</a>
+    </div>
+  </div>
+
 
     {% block content %}{% endblock %}
 
