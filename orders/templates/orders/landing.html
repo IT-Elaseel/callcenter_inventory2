@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <title>حلواني الأصيل - Landing + Login</title>
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      margin: 0;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #ff9a9e, #fad0c4, #fbc2eb, #a18cd1);
+      font-family: 'Amiri', serif;
+      overflow: hidden;
+    }
+    .wrapper {
+      text-align: center;
+      position: relative;
+      z-index: 2;
+    }
+
+    /* عنوان الصفحة */
+    .title {
+      font-size: 90px;
+      font-weight: bold;
+      color: #fff;
+      margin-bottom: 40px;
+    }
+
+    /* أنيميشن الحلويات */
+    .sweet {
+      position: absolute;
+      top: -50px;
+      font-size: 50px;
+      animation: fall linear infinite;
+      opacity: 0.9;
+    }
+    @keyframes fall {
+      0% { transform: translateY(-50px) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(110vh) rotate(360deg); opacity: 0; }
+    }
+
+    /* صندوق اللوجن */
+    .login-box {
+      border: 1px solid #ccc;
+      padding: 40px;
+      display: inline-block;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+      width: 400px;
+    }
+    .login-box h2 {
+      margin-top: 0;
+      font-family: Arial, sans-serif;
+      font-size: 28px;
+    }
+    input {
+      margin: 12px 0;
+      padding: 12px;
+      width: 100%;
+      font-size: 16px;
+    }
+    button {
+      padding: 12px 25px;
+      font-size: 16px;
+      cursor: pointer;
+      background: #a18cd1;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      margin-top: 10px;
+    }
+    button:hover { background: #7a57d1; }
+    .error { color: red; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <!-- عنوان الصفحة -->
+    <div class="title">🍩 حلواني الأصيل</div>
+
+    <!-- صندوق تسجيل الدخول -->
+    <div class="login-box">
+      <h2>🔐 Login</h2>
+      {% if error %}<p class="error">{{ error }}</p>{% endif %}
+      <form method="post">
+        {% csrf_token %}
+        <input type="text" name="username" placeholder="Username" required><br>
+        <input type="password" name="password" placeholder="Password" required><br>
+        <button type="submit">Login</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const sweets = ["🍩", "🍪", "🍫", "🍬", "🧁"];
+    function createSweet() {
+      const sweet = document.createElement("div");
+      sweet.classList.add("sweet");
+      sweet.innerText = sweets[Math.floor(Math.random() * sweets.length)];
+      sweet.style.left = Math.random() * 100 + "vw";
+      sweet.style.animationDuration = (3 + Math.random() * 5) + "s";
+      document.body.appendChild(sweet);
+      setTimeout(() => sweet.remove(), 8000);
+    }
+    setInterval(createSweet, 600);
+  </script>
+</body>
+</html>

@@ -1,0 +1,78 @@
+{% extends "orders/base.html" %}
+{% block title %}قائمة العملاء{% endblock %}
+
+{% block content %}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Customers</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+        th { background: #f4f4f4; }
+        .btn {
+            padding: 5px 10px;
+            text-decoration: none;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            background-color: #f8f8f8;
+            color: #333;
+            font-size: 13px;
+            transition: background 0.3s, color 0.3s;
+        }
+        .btn:hover {
+            background-color: #007bff;
+            color: #fff;
+        }
+        .btn-new {
+            background-color: #28a745;
+            color: #fff;
+            border-color: #28a745;
+        }
+        .btn-new:hover {
+            background-color: #218838;
+        }
+    </style>
+</head>
+<body>
+    <h1>👥 قائمة العملاء</h1>
+
+    <form method="get">
+        <input type="text" name="q" placeholder="ابحث بالاسم أو التليفون" value="{{ request.GET.q|default:'' }}">
+        <button type="submit">بحث</button>
+    </form>
+
+    <table>
+        <tr>
+            <th>ID</th>
+            <th>الاسم</th>
+            <th>الموبايل</th>
+            <th>العنوان</th>
+            <th>عدد الحجوزات</th>
+            <th>إجراءات</th>
+        </tr>
+        {% for c in customers %}
+        <tr>
+            <td>{{ c.id }}</td>
+            <td>{{ c.name }}</td>
+            <td>{{ c.phone }}</td>
+            <td>{{ c.address|default:"-" }}</td>
+            <td>{{ c.reservations.count }}</td>
+            <td>
+                <!-- زرار استخدام العميل -->
+                <a href="{% url 'use_customer' c.id %}" class="btn">✅ استخدام</a>
+            </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6">لا يوجد عملاء</td></tr>
+        {% endfor %}
+    </table>
+
+    <p style="margin-top:15px;">
+        <!-- زرار إضافة عميل جديد -->
+        <a href="{% url 'add_customer' %}" class="btn btn-new">➕ إنشاء عميل جديد</a>
+    </p>
+</body>
+</html>
+{% endblock %}

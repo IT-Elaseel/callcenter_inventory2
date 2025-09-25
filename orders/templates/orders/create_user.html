@@ -1,0 +1,44 @@
+{% extends "orders/base.html" %}
+{% block content %}
+<div class="container mt-5" style="max-width:600px;">
+  <h2 class="mb-4 text-center">➕ إنشاء مستخدم جديد</h2>
+
+  <form method="post" class="card p-4 shadow-sm bg-light">
+    {% csrf_token %}
+
+    {% if form.errors %}
+      <div class="alert alert-danger">
+        <ul>
+        {% for field, errors in form.errors.items %}
+          {% for error in errors %}
+            <li>{{ error }}</li>
+          {% endfor %}
+        {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    <div class="mb-3">
+      <label class="form-label fw-bold">اسم المستخدم</label>
+      {{ form.username }}
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label fw-bold">البريد الإلكتروني</label>
+      {{ form.email }}
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label fw-bold">كلمة المرور</label>
+      {{ form.password }}
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label fw-bold">الدور</label>
+      {{ form.role }}
+    </div>
+
+    <button type="submit" class="btn btn-success w-100">✅ إنشاء</button>
+  </form>
+</div>
+{% endblock %}

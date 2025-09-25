@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>{% block title %}Sweets Factory{% endblock %}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@700&display=swap" rel="stylesheet">
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Cairo', 'Tahoma', sans-serif;
+            background: #f8f9fa;
+        }
+
+        .navbar {
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            color: white;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .navbar-brand {
+            font-weight: bold;
+            font-size: 26px;
+            display: flex;
+            align-items: center;
+            font-family: 'Amiri', serif;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .navbar-brand .logo-icon {
+            font-size: 32px;
+            margin-left: 8px;
+            animation: bounce 2s infinite;
+        }
+
+        .navbar-brand .logo-text {
+            background: linear-gradient(90deg, #fff, #ffd700, #fff);
+            background-size: 200%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: shine 4s linear infinite;
+            font-weight: 700;
+        }
+
+        @keyframes shine {
+            0% { background-position: 200% center; }
+            100% { background-position: -200% center; }
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-4px); }
+        }
+
+        .navbar-links a {
+            display: inline-block;
+            background: rgba(255,255,255,0.15);
+            padding: 6px 14px;
+            margin: 0 5px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+
+        .navbar-links a:hover {
+            background: rgba(255,255,255,0.35);
+            transform: translateY(-2px);
+        }
+
+        .navbar-user {
+            font-weight: bold;
+        }
+
+        .navbar-user a {
+            color: #ffdede;
+            text-decoration: none;
+            font-weight: normal;
+        }
+
+        .navbar-user a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <!-- ✅ البار العلوي -->
+    <div class="navbar">
+        <div class="navbar-brand">
+            <span class="logo-icon">🍩</span>
+            <span class="logo-text">حَلواني الأَصِيل</span>
+        </div>
+
+        <div class="navbar-links">
+            {% if request.user.is_authenticated %}
+                {% with role=request.user.userprofile.role %}
+                    {% if role == "admin" %}
+                        <a href="/admin/">⚙️ الإدارة</a>
+                        <a href="{% url 'branch_inventory' %}">📦 المخزون</a>
+                        <a href="{% url 'reservations_list' %}">📑 الحجوزات</a>
+                        <a href="/inventory/transactions/">📜 سجل الإضافات</a>
+                        <a href="/customers/">👥 العملاء</a>
+                        <a href="/callcenter/">📞 الكول سنتر</a>
+                        <a href="/reports/">📊 التقارير</a>
+                        {% if user.is_authenticated and user.is_superuser %}
+                            <a href="{% url 'add_user' %}">➕ إضافة مستخدم</a>
+                        {% endif %}
+                    {% elif role == "callcenter" %}
+                        <a href="/callcenter/">📞 الكول سنتر</a>
+                        <a href="{% url 'reservations_list' %}">📑 الحجوزات</a>
+                        <a href="{% url 'branch_inventory' %}">📦 المخزون</a>
+                        <a href="/customers/">👥 العملاء</a>
+                    {% elif role == "branch" %}
+                        <a href="/">🏠 الرئيسية</a>
+                        <a href="{% url 'branch_inventory' %}">📦 المخزون</a>
+                        <a href="/inventory/update/">📦 تحديث المخزون</a>
+                        <a href="/inventory/transactions/">📜 سجل الإضافات</a>
+                        <a href="{% url 'reservations_list' %}">📑 الحجوزات</a>
+                    {% endif %}
+                {% endwith %}
+            {% endif %}
+        </div>
+
+        <div class="navbar-user">
+            👤 <a href="#" data-bs-toggle="modal" data-bs-target="#changePasswordModal" style="color:white; text-decoration:none;">
+                {{ request.user.username }}
+            </a> |
+            <a href="{% url 'logout' %}">🚪 خروج</a>
+        </div>
+    </div>
+
+    {% block content %}{% endblock %}
+
+    <!-- ✅ Modal تغيير كلمة المرور -->
+    <div class="modal fade" id="changePasswordModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content rounded-3 shadow">
+          <div class="modal-header" style="background: linear-gradient(90deg,#667eea,#764ba2); color: #fff;">
+            <h5 class="modal-title">🔒 تغيير كلمة المرور</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <form method="post" action="{% url 'change_password' %}">
+              {% csrf_token %}
+
+              {% if success_message %}
+                <div class="alert alert-success">{{ success_message }}</div>
+              {% endif %}
+
+              <div class="mb-3">
+                <label class="form-label">كلمة المرور الحالية</label>
+                {{ password_form.old_password }}
+                {% if password_form.old_password.errors %}
+                  <div class="alert alert-danger mt-1 p-1">{{ password_form.old_password.errors.0 }}</div>
+                {% endif %}
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label">كلمة المرور الجديدة</label>
+                {{ password_form.new_password1 }}
+                {% if password_form.new_password1.errors %}
+                  <div class="alert alert-danger mt-1 p-1">{{ password_form.new_password1.errors.0 }}</div>
+                {% endif %}
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label">تأكيد كلمة المرور</label>
+                {{ password_form.new_password2 }}
+                {% if password_form.new_password2.errors %}
+                  <div class="alert alert-danger mt-1 p-1">{{ password_form.new_password2.errors.0 }}</div>
+                {% endif %}
+              </div>
+
+              <button type="submit" class="btn btn-primary w-100 mt-2">💾 حفظ التغييرات</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ✅ افتح المودال تلقائيًا لو فيه أخطاء -->
+{% if show_modal %}
+<script>
+  document.addEventListener("DOMContentLoaded", function() {
+    var myModal = new bootstrap.Modal(document.getElementById('changePasswordModal'));
+    myModal.show();
+  });
+</script>
+{% endif %}
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

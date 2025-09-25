@@ -1,0 +1,28 @@
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path("", views.landing, name="landing"),       # الصفحة الرئيسية الجديدة
+    path("dashboard/", views.root_redirect, name="home"),   # الداشبورد القديمة
+    path("reservations/", views.reservations_list, name="reservations_list"),
+    path("reservations/<int:res_id>/<str:status>/", views.update_reservation_status, name="update_reservation_status"),
+    path("reports/", views.reports, name="reports"),
+    path("reports/export/excel/", views.export_reservations_excel, name="export_reservations_excel"),
+    path("reports/export/pdf/", views.export_reservations_pdf, name="export_reservations_pdf"),
+    path("callcenter/", views.callcenter_dashboard, name="callcenter_dashboard"),
+    path("branch/", views.branch_dashboard, name="branch_dashboard"),
+    path("login/", views.landing, name="login"),
+    path("logout/", views.logout_view, name="logout"),
+    path("branch/<int:branch_id>/export/excel/", views.export_inventory_excel, name="export_inventory_excel"),
+    path("branch/export/excel/", views.export_inventory_excel, name="branch_export_inventory_excel"),
+    path("customers/", views.customers_list, name="customers_list"),
+    path("landing/", views.landing, name="landing"), # الصفحة الجديدة
+    path("inventory/update/", views.update_inventory, name="update_inventory"),
+    path("inventory/transactions/", views.inventory_transactions, name="inventory_transactions"),
+    path("branch/inventory/", views.branch_inventory, name="branch_inventory"),
+    path("customers/use/<int:customer_id>/", views.use_customer, name="use_customer"),
+    path("customers/add/", views.add_customer, name="add_customer"),
+    path("customers/resolve_conflict/", views.resolve_conflict, name="resolve_conflict"),
+    path("add-user/", views.add_user_view, name="add_user"),
+    path("password/change/", views.change_password, name="change_password"),
+]

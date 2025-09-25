@@ -1,0 +1,150 @@
+{% extends "orders/base.html" %}
+
+{% block content %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+
+<style>
+    body {
+
+    }
+
+    .form-wrapper {
+        max-width: 600px;
+        margin: 60px auto;
+        background: #fff;
+        padding: 35px 30px;
+        border-radius: 16px;
+        border: 1px solid #e1e4e8;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .form-wrapper:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 25px rgba(0,0,0,0.12);
+    }
+
+    .form-wrapper h2 {
+        text-align: center;
+        font-weight: 700;
+        margin-bottom: 25px;
+        color: #2c3e50;
+    }
+
+    .form-label {
+        font-weight: 600;
+        color: #444;
+        display: block;
+        margin-bottom: 6px;
+        text-align: right;
+    }
+
+    .form-control, .form-select {
+        border-radius: 10px;
+        border: 1px solid #ccc;
+        padding: 12px 14px;
+        width: 100%;
+        text-align: right;
+        transition: border 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .form-control:focus, .form-select:focus {
+        border-color: #4a90e2;
+        box-shadow: 0 0 6px rgba(74,144,226,0.4);
+    }
+
+    .btn-submit {
+        margin-top: 20px;
+        width: 100%;
+        padding: 14px;
+        font-size: 17px;
+        font-weight: 600;
+        border: none;
+        border-radius: 12px;
+        background: linear-gradient(90deg, #007bff, #00c6ff);
+        color: #fff;
+        transition: background-position 0.4s ease, transform 0.2s ease;
+        background-size: 200% auto;
+        background-position: left center;
+    }
+
+    .btn-submit:hover {
+        background-position: right center;
+        transform: scale(1.03);
+        box-shadow: 0 5px 15px rgba(0,123,255,0.3);
+    }
+
+    .text-danger {
+        font-size: 13px;
+        margin-top: 4px;
+        text-align: right;
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+</style>
+
+<div class="form-wrapper">
+    <h2><i class="bi bi-person-plus-fill"></i> إضافة مستخدم جديد</h2>
+    <form method="post" novalidate>
+        {% csrf_token %}
+
+        <!-- Username -->
+        <div class="form-group">
+            <label class="form-label">{{ form.username.label }}</label>
+            {{ form.username }}
+            {% if form.username.errors %}
+                <div class="text-danger">{{ form.username.errors }}</div>
+            {% endif %}
+        </div>
+
+        <!-- Email -->
+        <div class="form-group">
+            <label class="form-label">{{ form.email.label }}</label>
+            {{ form.email }}
+            {% if form.email.errors %}
+                <div class="text-danger">{{ form.email.errors }}</div>
+            {% endif %}
+        </div>
+
+        <!-- Role -->
+        <div class="form-group">
+            <label class="form-label">{{ form.role.label }}</label>
+            {{ form.role }}
+            {% if form.role.errors %}
+                <div class="text-danger">{{ form.role.errors }}</div>
+            {% endif %}
+        </div>
+
+        <!-- Branch -->
+        <div class="form-group" id="branch-field">
+            <label class="form-label">{{ form.branch.label }}</label>
+            {{ form.branch }}
+            {% if form.branch.errors %}
+                <div class="text-danger">{{ form.branch.errors }}</div>
+            {% endif %}
+        </div>
+
+        <button type="submit" class="btn-submit">
+            <i class="bi bi-save-fill"></i> حفظ المستخدم
+        </button>
+    </form>
+</div>
+
+<script>
+    const roleSelect = document.getElementById("id_role");
+    const branchField = document.getElementById("branch-field");
+
+    function toggleBranchField() {
+        if (roleSelect.value === "branch") {
+            branchField.style.display = "block";
+        } else {
+            branchField.style.display = "none";
+        }
+    }
+
+    toggleBranchField();
+    roleSelect.addEventListener("change", toggleBranchField);
+</script>
+{% endblock %}

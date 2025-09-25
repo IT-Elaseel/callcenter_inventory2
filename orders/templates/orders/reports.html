@@ -1,0 +1,60 @@
+{% extends "orders/base.html" %}
+{% block title %}لوحة الفرع{% endblock %}
+
+{% block content %}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Reports</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        .box { border: 1px solid #ccc; padding: 15px; margin: 10px; display: inline-block; }
+        table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+        th { background: #f4f4f4; }
+    </style>
+</head>
+<body>
+    <h1>📊 لوحة التقارير</h1>
+    <!-- Filter by date -->
+    <form method="get">
+        من: <input type="date" name="start_date" value="{{ start_date }}">
+        إلى: <input type="date" name="end_date" value="{{ end_date }}">
+        <button type="submit">عرض</button>
+    </form>
+
+    <!-- Stats -->
+    <div class="box">إجمالي الحجوزات: {{ stats.total }}</div>
+    <div class="box">✅ Confirmed: {{ stats.confirmed }}</div>
+    <div class="box">🕒 Pending: {{ stats.pending }}</div>
+    <div class="box">❌ Cancelled: {{ stats.cancelled }}</div>
+
+    <!-- Top Products -->
+    <h2>أكثر المنتجات طلبًا</h2>
+    <table>
+        <tr><th>Product</th><th>Total Reservations</th></tr>
+        {% for p in top_products %}
+        <tr><td>{{ p.product__name }}</td><td>{{ p.total }}</td></tr>
+        {% empty %}
+        <tr><td colspan="2">لا يوجد بيانات</td></tr>
+        {% endfor %}
+    </table>
+
+    <!-- Top Branches -->
+    <h2>أفضل الفروع أداءً</h2>
+    <table>
+        <tr><th>Branch</th><th>Total Reservations</th></tr>
+        {% for b in top_branches %}
+        <tr><td>{{ b.branch__name }}</td><td>{{ b.total }}</td></tr>
+        {% empty %}
+        <tr><td colspan="2">لا يوجد بيانات</td></tr>
+        {% endfor %}
+    </table>
+    <p>
+    📥 Export:
+    <a href="{% url 'export_reservations_excel' %}">Excel</a> |
+    <a href="{% url 'export_reservations_pdf' %}">PDF</a>
+</p>
+</body>
+</html>
+{% endblock %}
