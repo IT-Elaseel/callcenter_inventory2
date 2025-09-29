@@ -1,7 +1,5 @@
 from django.contrib import admin
-from .models import Branch, Product, Inventory, Reservation, InventoryTransaction, Customer
-from .models import Category
-from .models import UserProfile
+from .models import Branch, Product, Inventory, Reservation, InventoryTransaction, Customer,Category,UserProfile,DailyRequest
 
 #-------------------------------------------------------------------
 @admin.register(Branch)
@@ -55,3 +53,12 @@ class UserProfileAdmin(admin.ModelAdmin):
 class CustomerAdmin(admin.ModelAdmin):
     list_display = ("name", "phone", "address")
     search_fields = ("name", "phone")
+#-------------------------------------------------------------------------------------------------------
+@admin.register(DailyRequest)
+class DailyRequestAdmin(admin.ModelAdmin):
+    list_display = ("id", "branch", "product", "quantity","get_unit", "order_number", "is_confirmed", "is_printed", "created_at")
+    list_filter = ("branch", "is_confirmed", "is_printed", "created_at")
+    search_fields = ("order_number", "product__name", "branch__name")
+    def get_unit(self, obj):
+        return obj.product.get_unit_display()
+    get_unit.short_description = "الوحدة"

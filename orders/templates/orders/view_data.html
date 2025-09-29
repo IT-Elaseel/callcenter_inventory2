@@ -137,18 +137,54 @@
 </div>
 
 <!-- 🔽 JavaScript -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
   document.addEventListener("DOMContentLoaded", function() {
     document.querySelectorAll(".delete-form").forEach(form => {
       form.addEventListener("submit", function(e) {
-        e.preventDefault(); // ❌ يمنع التحويل للسيرفر
+        e.preventDefault(); // نمنع الإرسال التقليدي
 
-        let row = form.closest("tr");
-        row.innerHTML = `<td colspan="${row.cells.length}" class="text-danger fw-bold text-center">❌ تم الحذف</td>`;
+        Swal.fire({
+          title: "هل أنت متأكد؟",
+          text: "لا يمكن التراجع بعد الحذف!",
+          icon: "warning",
+          showCancelButton: true,
+          confirmButtonColor: "#d33",
+          cancelButtonColor: "#3085d6",
+          confirmButtonText: "🗑 نعم، احذف",
+          cancelButtonText: "إلغاء"
+        }).then((result) => {
+          if (result.isConfirmed) {
+            // ✅ لو المستخدم وافق → ابعت الطلب
+            const formData = new FormData(form);
 
-        setTimeout(() => {
-          row.remove();
-        }, 2000);
+            fetch("", {
+              method: "POST",
+              headers: {
+                "X-CSRFToken": form.querySelector("[name=csrfmiddlewaretoken]").value
+              },
+              body: formData
+            })
+            .then(res => res.text())
+            .then(html => {
+              Swal.fire({
+                title: "تم الحذف!",
+                text: "تم حذف العنصر بنجاح.",
+                icon: "success",
+                confirmButtonText: "👌 موافق"
+              }).then(() => {
+                // بعد ما يقفل الرسالة نحدّث الصفحة
+                document.open();
+                document.write(html);
+                document.close();
+              });
+            })
+            .catch(err => {
+              Swal.fire("خطأ", "حصل مشكلة أثناء الحذف", "error");
+              console.error("خطأ أثناء الحذف:", err);
+            });
+          }
+        });
       });
     });
   });

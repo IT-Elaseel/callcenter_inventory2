@@ -1,0 +1,100 @@
+{% extends "orders/base.html" %}
+{% block title %}لوحة الحجوزات{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div style="display:flex; justify-content:space-between; align-items:center;">
+    <h1>📋 لوحة الحجوزات</h1>
+  </div>
+
+  <form method="get" class="mb-3 mt-3">
+    <div class="row g-3 align-items-end">
+
+      <div class="col-md-3">
+        <label class="form-label">من:</label>
+        <input type="date" class="form-control" name="start_date" value="{{ start_date|default:'' }}">
+      </div>
+
+      <div class="col-md-3">
+        <label class="form-label">إلى:</label>
+        <input type="date" class="form-control" name="end_date" value="{{ end_date|default:'' }}">
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">بحث:</label>
+        <input type="text" class="form-control" name="q" value="{{ query|default:'' }}" placeholder="اسم العميل أو رقم الهاتف">
+      </div>
+
+      <div class="col-md-2">
+        <button type="submit" class="btn btn-success w-100">عرض</button>
+      </div>
+
+    </div>
+  </form>
+
+  <div class="table-responsive mt-4">
+    <table class="table table-bordered table-striped text-center align-middle">
+      <thead class="table-dark">
+        <tr>
+          <th>ID</th>
+          <th>Customer</th>
+          <th>Phone</th>
+          <th>Product</th>
+          <th>Quantity</th>
+          <th>Branch</th>
+          <th>Delivery Type</th>
+          <th>Status</th>
+          <th>Created At</th>
+          <th>Decision At</th>
+          <th>Last Branch Action</th>
+          <th>Reserved By</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for res in reservations %}
+        <tr class="{{ res.status }}">
+          <td>{{ res.id }}</td>
+          <td>{{ res.customer.name }}</td>
+          <td>{{ res.customer.phone }}</td>
+          <td>{{ res.product.name }}</td>
+          <td>{{ res.quantity }}</td>
+          <td>{{ res.branch.name }}</td>
+          <td>{{ res.get_delivery_type_display }}</td>
+          <td>{{ res.get_status_display }}</td>
+          <td>{{ res.created_at|date:"Y-m-d H:i" }}</td>
+          <td>{{ res.decision_at|date:"Y-m-d H:i" }}</td>
+          <td>
+            {% if res.branch_last_modified_at %}
+              {{ res.branch_last_modified_at|date:"Y-m-d H:i" }}
+            {% else %}-{% endif %}
+          </td>
+          <td>
+            {% if res.reserved_by %}
+              {{ res.reserved_by.username }}
+            {% else %}-{% endif %}
+          </td>
+          <td>
+            {% if user_role == "branch" or user_role == "admin" %}
+              {% if res.status == "pending" %}
+                <a href="{% url 'update_reservation_status' res.id 'confirmed' %}" class="btn btn-sm btn-success">✅ Confirm</a>
+                <a href="{% url 'update_reservation_status' res.id 'cancelled' %}" class="btn btn-sm btn-danger">❌ Cancel</a>
+              {% elif res.status == "confirmed" %}
+                <a href="{% url 'update_reservation_status' res.id 'cancelled' %}" class="btn btn-sm btn-danger">❌ Cancel</a>
+              {% elif res.status == "cancelled" %}
+                <a href="{% url 'update_reservation_status' res.id 'confirmed' %}" class="btn btn-sm btn-success">✅ Re-Confirm</a>
+              {% endif %}
+            {% else %}
+              -
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="13">❌ لا توجد حجوزات</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

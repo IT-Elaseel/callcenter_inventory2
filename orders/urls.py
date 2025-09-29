@@ -12,7 +12,7 @@ urlpatterns = [
     path("branch/", views.branch_dashboard, name="branch_dashboard"),
     path("login/", views.landing, name="login"),
     path("logout/", views.logout_view, name="logout"),
-    path("branch/<int:branch_id>/export/excel/", views.export_inventory_excel, name="export_inventory_excel"),
+    path("export-reservations/<int:branch_id>/", views.export_reservations_excel, name="export_reservations_excel"),
     path("branch/export/excel/", views.export_inventory_excel, name="branch_export_inventory_excel"),
     path("customers/", views.customers_list, name="customers_list"),
     path("landing/", views.landing, name="landing"), # الصفحة الجديدة
@@ -30,7 +30,9 @@ urlpatterns = [
     path("edit-product/<int:pk>/", views.edit_product, name="edit_product"),
     path("edit-branch/<int:pk>/", views.edit_branch, name="edit_branch"),
     path("view-data/", views.view_data, name="view_data"),
-
+    path("daily-request/", views.add_daily_request, name="add_daily_request"),
+    path("control-requests/", views.control_requests, name="control_requests"),
+    path("mark-printed/<str:order_number>/", views.mark_printed, name="mark_printed"),
 
 
 ]

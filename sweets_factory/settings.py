@@ -111,3 +111,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # 🔹 باسورد افتراضي (اختياري)
 DEFAULT_USER_PASSWORD = env("DEFAULT_USER_PASSWORD", default="12345678")
+LOGIN_URL = '/login/'
+
+# ممكن كمان تحدد الافتراضي بعد اللوجن
+LOGIN_REDIRECT_URL = '/dashboard/'   # أو أي صفحة عايزها بعد نجاح اللوجن
+LOGOUT_REDIRECT_URL = '/login/'      # بعد تسجيل الخروج يرجّع للوجن

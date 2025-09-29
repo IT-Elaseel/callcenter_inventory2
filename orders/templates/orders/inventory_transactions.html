@@ -2,54 +2,55 @@
 {% block title %}سجل المخزون{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
+<div class="transactions-dashboard">
 
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1>📦 سجل عمليات المخزون {% if branch %}- {{ branch.name }}{% endif %}</h1>
-    <a href="{% url 'home' %}" class="btn btn-primary">⬅ العودة للمنتجات</a>
+  <!-- ✅ الهيدر + الفلاتر ثابت -->
+  <div class="header-fixed">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h1 class="m-0" style="font-size: 1.5rem;">📦 سجل عمليات المخزون {% if branch %}- {{ branch.name }}{% endif %}</h1>
+    </div>
+
+    <form method="get" class="filters">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label">من:</label>
+          <input type="date" class="form-control" name="start_date"value="{{ start_date|default:'' }}" max="{{ today|date:'Y-m-d' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">إلى:</label>
+          <input type="date" class="form-control" name="end_date"value="{{ end_date|default:'' }}" max="{{ today|date:'Y-m-d' }}">
+        </div>
+
+        {% if branches %}
+        <div class="col-md-3">
+          <label class="form-label">الفرع:</label>
+          <select name="branch" class="form-select" onchange="this.form.submit()">
+            <option value="all" {% if not selected_branch %}selected{% endif %}>-- كل الفروع --</option>
+            {% for b in branches %}
+              <option value="{{ b.id }}" {% if selected_branch == b.id %}selected{% endif %}>
+                {{ b.name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
+
+        <div class="col-md-3">
+          <label class="form-label">بحث:</label>
+          <input type="text" class="form-control" name="q" value="{{ query|default:'' }}" placeholder="اسم المنتج">
+        </div>
+
+        <div class="col-md-3">
+          <button type="submit" class="btn btn-success custom-btn">عرض</button>
+        </div>
+      </div>
+    </form>
   </div>
 
-  <!-- 🔽 فلترة التاريخ + البحث -->
-  <form method="get" class="mb-3">
-    <div class="row g-3 align-items-end">
-      <div class="col-md-3">
-        <label class="form-label">من:</label>
-        <input type="date" class="form-control" name="start_date" value="{{ start_date|default:'' }}">
-      </div>
-      <div class="col-md-3">
-        <label class="form-label">إلى:</label>
-        <input type="date" class="form-control" name="end_date" value="{{ end_date|default:'' }}">
-      </div>
-
-      {% if branches %}
-      <div class="col-md-3">
-        <label class="form-label">الفرع:</label>
-        <select name="branch" class="form-select" onchange="this.form.submit()">
-          <option value="all" {% if not selected_branch %}selected{% endif %}>-- كل الفروع --</option>
-          {% for b in branches %}
-            <option value="{{ b.id }}" {% if selected_branch == b.id %}selected{% endif %}>
-              {{ b.name }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-      {% endif %}
-
-      <div class="col-md-3">
-        <label class="form-label">بحث:</label>
-        <input type="text" class="form-control" name="q" value="{{ query|default:'' }}" placeholder="اسم المنتج">
-      </div>
-
-      <div class="col-md-12">
-        <button type="submit" class="btn btn-success">عرض</button>
-      </div>
-    </div>
-  </form>
-
-  <!-- ✅ جدول منسق -->
-  <div class="table-responsive">
-    <table class="table table-bordered table-striped text-center">
-      <thead class="table-dark">
+  <!-- ✅ الجدول ب Scroll داخلي -->
+  <div class="table-wrapper">
+    <table class="styled-table">
+      <thead>
         <tr>
           <th>التاريخ</th>
           <th>المنتج</th>
@@ -71,6 +72,94 @@
       </tbody>
     </table>
   </div>
-
 </div>
+
+<style>
+  html, body {
+    height: 100%;
+    margin: 0;
+    overflow: hidden; /* يمنع Scroll خارجي */
+  }
+
+  .transactions-dashboard {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .header-fixed {
+    position: sticky;
+    top: 0;
+    background: #fff;
+    z-index: 20;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #ddd;
+  }
+
+  .filters { margin-bottom: 10px; }
+
+  .table-wrapper {
+    flex: 1 1 auto;
+    overflow-y: auto; /* Scroll داخلي */
+    border: 1px solid #ddd;
+    border-radius: 8px;
+  }
+  .styled-table {
+    width: 70%;
+    margin: 20px auto;   /* يخلي الجدول في النص */
+    border-collapse: collapse;
+    font-size: 15px;
+  }
+
+
+.styled-table th, .styled-table td {
+  padding: 6px 8px;  /* ← كان 12px */
+  text-align: center;
+  border: 1px solid #eee;
+}
+
+.styled-table th {
+  position: sticky;
+  top: 0;
+  background: #000;   /* خلفية سوداء */
+  color: #fff;        /* الخط أبيض */
+  font-weight: bold;  /* يخلي الخط Bold */
+  z-index: 5;
+  font-size: 16px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+  .styled-table tbody tr:hover {
+    background:  #f8d7da;          /* أحمر فاتح */
+    transition: background 0.2s ease-in-out;
+    cursor: pointer;           /* يخلي الماوس يتغير */
+}
+h1.m-0 {
+  font-size: 1.5rem !important;  /* يجبر h1 على 1.5rem */
+  font-weight: bold;
+  margin: 0;
+}
+.custom-btn {
+    padding: 8px 25px;
+    font-size: 15px;
+    font-weight: 600;
+    border-radius: 8px;
+    transition: all 0.3s ease-in-out;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    background: linear-gradient(135deg, #28a745, #34ce57); /* جراديانت افتراضي */
+    border: none;
+  }
+
+  .custom-btn:hover {
+    background: linear-gradient(135deg, #218838, #28a745); /* جراديانت أغمق عند الهوفر */
+    color: #fff;
+    transform: translateY(-2px);   /* يطلع لفوق */
+    box-shadow: 0 6px 12px rgba(0,0,0,0.2); /* ظل أقوى */
+  }
+
+  .custom-btn:active {
+    transform: translateY(0); /* يرجع مكانه لما يتداس */
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  }
+</style>
 {% endblock %}

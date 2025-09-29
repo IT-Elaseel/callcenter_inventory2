@@ -1,40 +1,29 @@
-# 📌 Python Standard Library
-from datetime import datetime
-# 📌 Third-party Libraries
+from django.shortcuts import render, redirect,get_object_or_404
+from django.contrib import messages
+from .models import Category, Product, Inventory, Reservation, Branch,Customer
+from django.db.models import Count,Q
+from django.utils.timezone import now, timedelta
 import openpyxl
-from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from django.http import HttpResponse
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
-# 📌 Django Imports
-from django.conf import settings
-from django.contrib import messages
-from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
-from django.contrib.auth.decorators import login_required, user_passes_test
-from django.contrib.auth.forms import AuthenticationForm
-from django.contrib.auth.models import User
-from django.core.paginator import Paginator
-from django.db.models import Count, Q
-from django.http import HttpResponse, JsonResponse,HttpResponseForbidden
-from django.shortcuts import render, redirect, get_object_or_404
-from django.utils import timezone
-from django.utils.timezone import now, timedelta
-# 📌 Local Application Imports
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth import authenticate, login, logout
 from .decorators import role_required
-from .forms import CategoryForm, ProductForm, BranchForm, UserCreateForm, ArabicPasswordChangeForm
-from .models import Category, Product, Inventory, Reservation, Branch, Customer, InventoryTransaction,DailyRequest
-#------------------------------التحقق من المستخدم ادمن اول لا-------------------------------------
-def is_admin(user):
-    return (
-        user.is_superuser
-        or user.groups.filter(name="admin").exists()
-        or (hasattr(user, "userprofile") and user.userprofile.role == "admin")
-    )
-def is_control(user):
-    return user.is_authenticated and user.userprofile.role == "control"
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from django.contrib.auth.forms import AuthenticationForm
+from .models import Product, Inventory, InventoryTransaction
+from django.shortcuts import render, redirect
+from django.http import HttpResponse, JsonResponse   # ✅ أضفت JsonResponse
+from django.contrib import messages
+from django.utils import timezone
+from django.shortcuts import render, redirect
+from django.contrib import messages
+from .forms import UserCreateForm
 
-#---------------------------------------------تصدير الحجوزات الى اكسيل----------------------------------------------------------
-def export_reservations_excel(request, branch_id):
-    reservations = Reservation.objects.filter(branch_id=branch_id).select_related("product", "branch", "customer").order_by("-created_at")
+#-------------------------------------------------------------------
+def export_reservations_excel(request):
+    reservations = Reservation.objects.select_related("product", "branch").order_by("-created_at")
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -47,20 +36,18 @@ def export_reservations_excel(request, branch_id):
     for r in reservations:
         ws.append([
             r.id,
-            r.customer.name if r.customer else "",
-            r.customer.phone if r.customer else "",
-            r.product.name if r.product else "",
-            r.branch.name if r.branch else "",
+            r.customer_name,
+            r.customer_phone,
+            r.product.name,
+            r.branch.name,
             r.get_delivery_type_display(),
             r.get_status_display(),
             r.created_at.strftime("%Y-%m-%d %H:%M"),
         ])
 
     # Response
-    response = HttpResponse(
-        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-    response["Content-Disposition"] = f'attachment; filename="reservations_branch_{branch_id}.xlsx"'
+    response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    response["Content-Disposition"] = 'attachment; filename="reservations.xlsx"'
     wb.save(response)
     return response
 #-------------------------------------------------------------
@@ -163,7 +150,8 @@ def home(request):
             "reservations": reservations,  # ⬅️ مهم جداً
         },
     )
-#----------------------------قايمه الحجوزات---------------------------------
+
+#-------------------------------------------------------------
 @login_required
 def reservations_list(request):
     from datetime import date as dt_date
@@ -217,7 +205,6 @@ def reservations_list(request):
             "start_date": start_raw,
             "end_date": end_raw,
             "query": query,
-            "today": today,  # ← أضفها
         },
     )
 #-------------------------------------------------------------
@@ -284,6 +271,7 @@ def reports(request):
                     "end_date": end_raw,
                 },
             )
+
     # لو وصلنا هنا يبقى عندنا start_date/end_date صالحين
     reservations = Reservation.objects.filter(created_at__date__range=[start_date, end_date])
 
@@ -293,6 +281,7 @@ def reports(request):
         "pending": reservations.filter(status="pending").count(),
         "cancelled": reservations.filter(status="cancelled").count(),
     }
+
     top_products = (
         reservations.values("product__name").annotate(total=Count("id")).order_by("-total")[:5]
     )
@@ -312,7 +301,13 @@ def reports(request):
             "end_date": end_raw,
         },
     )
+
 #-------------------------------------------------------------
+import openpyxl
+from django.http import HttpResponse
+from django.db.models import Count, Q
+from datetime import datetime
+
 @login_required
 @role_required(["admin", "branch"])
 def export_reports_excel(request):
@@ -378,6 +373,7 @@ def export_reports_excel(request):
     response["Content-Disposition"] = 'attachment; filename="reports.xlsx"'
     wb.save(response)
     return response
+
 #-------------------------------------------------------------
 @login_required
 @role_required(["callcenter"])
@@ -605,6 +601,7 @@ def branch_dashboard(request):
             "is_admin": False,
         },
     )
+
 #-------------------------------------------------------------------
 def login_view(request):
     if request.method == "POST":
@@ -622,8 +619,6 @@ def login_view(request):
                     return redirect("callcenter_dashboard")
                 elif profile.role == "branch":
                     return redirect("branch_dashboard")
-                elif profile.role == "control":   # ✅ جديد
-                    return redirect("control_requests")
             return redirect("home")
         else:
             return render(request, "orders/login.html", {"error": "❌ بيانات الدخول غير صحيحة"})
@@ -646,9 +641,6 @@ def root_redirect(request):
             return redirect("callcenter_dashboard")
         elif profile.role == "branch":
             return redirect("branch_dashboard")
-        elif profile.role == "control":   # ✅ جديد
-            return redirect("control_requests")
-
 
     # fallback لو مفيش role
     return redirect("login")
@@ -723,6 +715,8 @@ def export_inventory_excel(request, branch_id=None):
     wb.save(response)
     return response
 #-------------------------------------------------------------------
+from django.core.paginator import Paginator
+
 @login_required
 @role_required(["admin", "callcenter"])
 def customers_list(request):
@@ -769,6 +763,8 @@ def update_inventory(request):
             status=403
         )
 
+
+
     # 🟢 POST = تحديث الكمية
     if request.method == "POST":
         product_id = request.POST.get("product_id")
@@ -777,11 +773,7 @@ def update_inventory(request):
         if product_id and qty:
             product = Product.objects.get(id=product_id)
             qty = int(qty)
-            if qty < 1:
-                return JsonResponse({
-                    "success": False,
-                    "message": "❌ أقل كمية مسموح بها هي 1"
-                })
+
             inventory, created = Inventory.objects.get_or_create(branch=branch, product=product)
             inventory.quantity = qty
             inventory.save()
@@ -806,15 +798,10 @@ def update_inventory(request):
 
     # 🟢 GET = عرض الصفحة
     categories = Category.objects.all()
-    selected_category = request.GET.get("category")
+    selected_category = request.GET.get("category") or request.session.get("selected_category")
 
-    if selected_category == "":  # اختار "كل الأقسام"
-        request.session["selected_category"] = None
-        selected_category = None
-    elif selected_category is not None:  # اختار قسم معين
+    if selected_category:
         request.session["selected_category"] = selected_category
-    else:  # مفيش باراميتر في GET → استرجع من السيشن
-        selected_category = request.session.get("selected_category")
 
     products = Product.objects.all()
     if selected_category:
@@ -830,10 +817,8 @@ def update_inventory(request):
             "selected_category": int(selected_category) if selected_category else None,
             "products": products,
             "inventories": inventories,
-             "branch": branch,   # 👈 أضفت الفرع هنا
         },
     )
-
 #-------------------------------------------------------------------------------------------------------
 @login_required
 @role_required(["branch", "admin"])
@@ -860,16 +845,10 @@ def inventory_transactions(request):
         try:
             start_date = dt_date.fromisoformat(start_raw)
             end_date   = dt_date.fromisoformat(end_raw)
-        # 🛑 تأمين: ماينفعش تاريخ النهاية يعدي النهاردة
-            if end_date > today:
-                end_date = today
-                end_raw = today.isoformat()
-
         except ValueError:
             start_date = end_date = today
             start_raw, end_raw = today.isoformat(), today.isoformat()
             messages.error(request, "⚠️ صيغة التاريخ غير صحيحة.")
-
 
     # 🟢 لو المستخدم أدمن
     if request.user.is_superuser or request.user.groups.filter(name="admin").exists():
@@ -920,9 +899,9 @@ def inventory_transactions(request):
             "start_date": start_raw,
             "end_date": end_raw,
             "query": query,
-            "today": today,   # ✅ علشان نستخدمه في max
         },
     )
+
 #-------------------------------------------------------------------------------------------------------
 @login_required
 @role_required(["branch", "admin", "callcenter"])
@@ -984,6 +963,7 @@ def branch_inventory(request):
             "query": query,
         },
     )
+
 #-------------------------------------------------------------------------------------------------------
 @login_required
 @role_required(["callcenter", "admin"])
@@ -1069,7 +1049,15 @@ def resolve_conflict(request):
 
     return redirect("callcenter_dashboard")
 #-------------------------------------------------------------------------------------------------------
+# views.py
+from django.shortcuts import render, redirect
+from django.contrib.auth.decorators import login_required, user_passes_test
+from .forms import UserCreateForm
+
 # شرط يفتح الصفحة بس لو هو أدمن
+def is_admin(user):
+    return user.is_superuser or user.groups.filter(name="admin").exists()
+
 @login_required
 @user_passes_test(is_admin)
 def add_user_view(request):
@@ -1081,7 +1069,13 @@ def add_user_view(request):
     else:
         form = UserCreateForm()
     return render(request, "orders/add_user.html", {"form": form})
+
 #-------------------------------------------------------------------------------------------------------
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth import update_session_auth_hash
+from django.shortcuts import redirect
+from .forms import ArabicPasswordChangeForm
+
 @login_required
 def change_password(request):
     form = ArabicPasswordChangeForm(user=request.user, data=request.POST or None)
@@ -1103,7 +1097,15 @@ def change_password(request):
         })
 
     return redirect("home")
+
+
 #-------------------------------------------------------------------------------------------------------
+from .forms import CategoryForm, ProductForm, BranchForm
+from django.contrib.auth.decorators import user_passes_test
+
+def is_admin(user):
+    return user.is_superuser or user.groups.filter(name="admin").exists()
+
 @login_required
 @user_passes_test(is_admin)
 def manage_data(request):
@@ -1149,7 +1151,11 @@ def manage_data(request):
         "branches": branches,
         "success_message": success_message,
     })
+
 #-------------------------------------------------------------------------------------------------------
+from django.contrib.auth.models import User
+from django.conf import settings
+
 @login_required
 @user_passes_test(is_admin)
 def manage_users(request):
@@ -1177,11 +1183,6 @@ def manage_users(request):
             u.set_password(settings.DEFAULT_USER_PASSWORD)
             u.save()
 
-            # ✨ تحديث التاريخ
-            if hasattr(u, "userprofile"):
-                u.userprofile.last_password_reset = timezone.now()
-                u.userprofile.save()
-
         return redirect("manage_users")
 
     return render(request, "orders/manage_users.html", {
@@ -1190,6 +1191,14 @@ def manage_users(request):
         "role": role,
     })
 #-------------------------------------------------------------------------------------------------------
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth.decorators import login_required, user_passes_test
+from .forms import CategoryForm, ProductForm, BranchForm
+from .models import Category, Product, Branch
+
+def is_admin(user):
+    return user.is_superuser or user.groups.filter(name="admin").exists()
+
 @login_required
 @user_passes_test(is_admin)
 def edit_category(request, pk):
@@ -1209,7 +1218,8 @@ def edit_category(request, pk):
         "success": success,
         "redirect_url": "view_data",
     })
-#-------------------------------------------------------------------------------------------------------
+
+
 @login_required
 @user_passes_test(is_admin)
 def edit_product(request, pk):
@@ -1229,7 +1239,8 @@ def edit_product(request, pk):
         "success": success,
         "redirect_url": "view_data",
     })
-#-------------------------------------------------------------------------------------------------------
+
+
 @login_required
 @user_passes_test(is_admin)
 def edit_branch(request, pk):
@@ -1249,6 +1260,7 @@ def edit_branch(request, pk):
         "success": success,
         "redirect_url": "view_data",
     })
+
 #-------------------------------------------------------------------------------------------------------
 @login_required
 @user_passes_test(is_admin)
@@ -1284,159 +1296,5 @@ def view_data(request):
         "query": query,
         "success_message": success_message,
     })
-#-------------------------------------------------------------------------------------------------------
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import render, redirect
-from django.utils import timezone
-from .models import DailyRequest, Product, OrderCounter
-@login_required
-def add_daily_request(request):
-    profile2 = getattr(request.user, "userprofile", None)
-
-    # 🚫 لو مش كنترول او ادمن
-    if not profile2 or profile2.role not in ["branch"]:
-        return render(
-            request,
-            "orders/no_permission.html",
-            {
-                "error_message": "🚫 غير مسموح لك بدخول هذه الصفحة. من فضلك تواصل مع مدير النظام لو محتاج صلاحية."
-            },
-            status=403
-        )
-    branch = request.user.userprofile.branch
-
-    # 🔑 رقم الطلبية مؤقت مخزن في السيشن
-    order_number = request.session.get("current_order_number")
-    if not order_number:
-        counter, _ = OrderCounter.objects.get_or_create(id=1)
-        counter.current_number += 1
-        counter.save()
-        order_number = str(counter.current_number)
-        request.session["current_order_number"] = order_number
-
-    # 🟢 رجّع القسم المختار (لو موجود في السيشن)
-    selected_category = request.session.get("selected_category")
-
-    if request.method == "POST":
-        if "add_item" in request.POST:
-            category_id = request.POST.get("category")
-            product_id = request.POST.get("product")
-            qty = int(request.POST.get("quantity", 1))
-
-            if product_id and qty > 0:
-                DailyRequest.objects.create(
-                    branch=branch,
-                    category_id=category_id,
-                    product_id=product_id,
-                    quantity=qty,
-                    created_by=request.user,
-                    order_number=order_number,
-                    is_confirmed=False
-                )
-
-            # ✅ خزّن القسم المختار في السيشن عشان يفضل بعد الريدايركت
-            request.session["selected_category"] = category_id
-
-            return redirect("add_daily_request")
-
-        elif "confirm_order" in request.POST:
-            now = timezone.now()
-            DailyRequest.objects.filter(
-                order_number=order_number,
-                branch=branch
-            ).update(
-                is_confirmed=True,
-                confirmed_at=now
-            )
-            # 🧹 امسح رقم الطلبية و القسم بعد التأكيد
-            request.session["current_order_number"] = None
-            request.session["selected_category"] = None
-            return redirect("add_daily_request")
-
-    # البيانات للـ HTML
-    products = Product.objects.all()
-    categories = Category.objects.all()
-    requests_today = DailyRequest.objects.filter(
-        order_number=order_number,
-        branch=branch,
-        is_confirmed=False
-    )
-
-    return render(request, "orders/add_daily_request.html", {
-        "products": products,
-        "categories": categories,
-        "requests_today": requests_today,
-        "order_number": order_number,
-        "selected_category": selected_category,  # ✅ بيرجع القسم للـ HTML
-    })
-
-#-------------------------------------------------------------------------------------------------------
-from django.contrib.auth.decorators import login_required, user_passes_test
-from django.utils.timezone import localdate, now
-from django.shortcuts import render, redirect
-from .models import DailyRequest, Branch
-
-@login_required
-def control_requests(request):
-    profile = getattr(request.user, "userprofile", None)
-
-    # 🚫 لو مش كنترول او ادمن
-    if not profile or profile.role not in ["control", "admin"]:
-        return render(
-            request,
-            "orders/no_permission.html",
-            {
-                "error_message": "🚫 غير مسموح لك بدخول هذه الصفحة. من فضلك تواصل مع مدير النظام لو محتاج صلاحية."
-            },
-            status=403
-        )
-
-    today = timezone.now().date()  # تاريخ اليوم
-    branch_id = request.GET.get("branch")
-    start_date = request.GET.get("start_date", str(localdate()))
-    end_date = request.GET.get("end_date", str(localdate()))
-    printed_filter = request.GET.get("printed", "all")
-
-    requests_qs = DailyRequest.objects.filter(is_confirmed=True, created_at__date__range=[start_date, end_date])
-
-    if branch_id:
-        requests_qs = requests_qs.filter(branch_id=branch_id)
-
-    if printed_filter == "yes":
-        requests_qs = requests_qs.filter(is_printed=True)
-    elif printed_filter == "no":
-        requests_qs = requests_qs.filter(is_printed=False)
-
-    # Group by (branch, order_number, created_by)
-    grouped_requests = {}
-    for r in requests_qs.select_related("branch", "product", "created_by").order_by("order_number", "created_at"):
-        key = (r.branch, r.order_number, r.created_by)
-        grouped_requests.setdefault(key, []).append(r)
-
-    branches = Branch.objects.all()
-
-    return render(request, "orders/control_requests.html", {
-        "today": today,
-        "grouped_requests": grouped_requests,
-        "branches": branches,
-        "selected_start": start_date,
-        "selected_end": end_date,
-        "selected_branch": branch_id,
-        "printed_filter": printed_filter,
-    })
-#-------------------------------------------------------------------------------------------------------
-from django.utils import timezone
-from django.shortcuts import redirect, get_list_or_404
-from django.views.decorators.http import require_POST
-
-@require_POST
-@user_passes_test(is_control)
-@login_required
-def mark_printed(request, order_number):
-    # جيب الطلبية كلها بنفس رقم الطلب
-    requests = DailyRequest.objects.filter(order_number=order_number)
-    if requests.exists():
-        requests.update(is_printed=True, printed_at=timezone.now())
-    return redirect("control_requests")
 
 #-------------------------------------------------------------------------------------------------------

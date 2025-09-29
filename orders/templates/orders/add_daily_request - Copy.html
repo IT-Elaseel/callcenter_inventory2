@@ -1,0 +1,64 @@
+<h2>📝 الطلب اليومي</h2>
+<form method="post">
+  {% csrf_token %}
+
+  <!-- اختيار المنتج -->
+  <select name="product" id="productSelect" required onchange="updateUnitLabel()">
+    <option value="">-- اختر المنتج --</option>
+    {% for p in products %}
+      <option value="{{ p.id }}" data-unit="{{ p.get_unit_display }}">{{ p.name }}</option>
+    {% endfor %}
+  </select>
+
+  <!-- الكمية + الوحدة جنبها -->
+  <div style="display:inline-flex; align-items:center; gap:6px; margin-top:5px;">
+    <input type="number" name="quantity" min="1" required placeholder="الكمية">
+    <span id="unitLabel" style="font-weight:bold; color:#333; display:none;"></span>
+  </div>
+
+  <!-- زرار الإضافة -->
+  <button type="submit" name="add_item" class="btn btn-success">➕ إضافة</button>
+</form>
+
+<h3>الطلبية الحالية (رقم: {{ order_number }})</h3>
+<table class="table">
+  <tr>
+    <th>المنتج</th>
+    <th>الكمية</th>
+    <th>الوحدة</th>
+    <th>الوقت</th>
+  </tr>
+  {% for r in requests_today %}
+    <tr>
+      <td>{{ r.product.name }}</td>
+      <td>{{ r.quantity }}</td>
+      <td>{{ r.product.get_unit_display }}</td>
+      <td>{{ r.created_at|date:"H:i:s" }}</td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="3">🚫 لا يوجد منتجات</td></tr>
+  {% endfor %}
+</table>
+
+{% if requests_today %}
+  <form method="post">
+    {% csrf_token %}
+    <button type="submit" name="confirm_order" class="btn btn-primary">✅ تأكيد الطلبية</button>
+  </form>
+{% endif %}
+<script>
+function updateUnitLabel() {
+  const select = document.getElementById("productSelect");
+  const unitLabel = document.getElementById("unitLabel");
+  const selectedOption = select.options[select.selectedIndex];
+  const unit = selectedOption.getAttribute("data-unit");
+
+  if (unit) {
+    unitLabel.textContent = unit;
+    unitLabel.style.display = "inline"; // يظهر بس عند اختيار منتج
+  } else {
+    unitLabel.textContent = "";
+    unitLabel.style.display = "none"; // يختفي لو ما اخترتش منتج
+  }
+}
+</script>

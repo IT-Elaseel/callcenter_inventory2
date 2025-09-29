@@ -94,17 +94,13 @@
                                     </select>
 
                                     <!-- ✅ خانة الكمية مع Error state -->
-                                  <input type="number" name="quantity" value="1" min="1"
-                                    data-product="{{ inv.product.id }}"
-                                    data-branch="{{ inv.branch.id }}"
-                                    class="qty {% if quantity_error and quantity_error.product_id == inv.product.id and quantity_error.branch_id == inv.branch.id %}error{% endif %}"
-                                    onfocus="this.select()">
-                                  <span>{{ inv.product.get_unit_display }}</span>
+                                    <input type="number" name="quantity" value="1" min="1"
+                                        class="qty {% if quantity_error and quantity_error.product_id == inv.product.id and quantity_error.branch_id == inv.branch.id %}error{% endif %}"onfocus="this.select()">
+                                    <span>{{ inv.product.get_unit_display }}</span>
 
-                                  {% if quantity_error and quantity_error.product_id == inv.product.id and quantity_error.branch_id == inv.branch.id %}
-                                    <div class="error-msg">{{ quantity_error.message }}</div>
-                                  {% endif %}
-
+                                    {% if quantity_error and quantity_error.product_id == inv.product.id and quantity_error.branch_id == inv.branch.id %}
+                                        <div class="error-msg">{{ quantity_error.message }}</div>
+                                    {% endif %}
 
                                     <!-- ✅ زرار بلون ثابت حسب ID الفرع -->
                                     <button type="submit" class="btn branch-btn" data-branch-id="{{ inv.branch.id }}">
@@ -146,39 +142,9 @@
         border-radius:8px;
     }
 
-    /* ✨ جدول شيك بخط أكبر */
-    .styled-table {
-        width:100%;
-        border-collapse:collapse;
-        font-size:17px;             /* 👈 بدل 15px */
-        background: #fff;
-        box-shadow:0 2px 8px rgba(0,0,0,0.05); /* ظل بسيط */
-        border-radius:8px;
-        overflow:hidden;
-    }
-    .styled-table th, .styled-table td {
-        padding:14px;               /* 👈 بدل 12px */
-        text-align:center;
-        border:1px solid #eee;
-    }
-    .styled-table th {
-        position: sticky;
-        top: 0;
-        background:#f1f3f6;         /* 👈 أفتح من #f8f9fa */
-        z-index: 5;
-        font-size:18px;             /* 👈 بدل 16px */
-        font-weight:700;            /* 👈 تخن الخط */
-        color:#333;
-        box-shadow:0 2px 4px rgba(0,0,0,0.05);
-    }
-    /* 🟢 تأثير شيك على الصفوف */
-    .styled-table tbody tr:nth-child(even) {
-        background-color: #fafafa;
-    }
-    .styled-table tbody tr:hover {
-        background-color:#fff3cd;
-        transition: background 0.2s ease;
-    }
+    .styled-table { width:100%; border-collapse:collapse; font-size:15px; }
+    .styled-table th, .styled-table td { padding:12px; text-align:center; border:1px solid #eee; }
+    .styled-table th { position: sticky; top: 0; background:#f8f9fa; z-index: 5; font-size:16px; box-shadow:0 2px 4px rgba(0,0,0,0.05); }
 
 
     .page-title { font-size:28px; margin-bottom:25px; color:#222; font-weight:700; }
@@ -242,27 +208,4 @@
     .branch-btn[data-branch-id="3"] { background:#ff5722; }   /* فرع 3 = برتقالي */
     .branch-btn[data-branch-id="4"] { background:#9c27b0; }   /* فرع 4 = بنفسجي */
 </style>
-{% if quantity_error %}
-<script>
-document.addEventListener("DOMContentLoaded", function() {
-    var row = document.querySelector(
-        'input[name="quantity"][data-product="{{ quantity_error.product_id }}"][data-branch="{{ quantity_error.branch_id }}"]'
-    );
-    if(row) {
-        // نجيب مكان العنصر بالنسبة للصفحة
-        var y = row.getBoundingClientRect().top + window.scrollY;
-
-        // نطرح ارتفاع البار الثابت (مثلاً 100 بكسل حسب طول النافبار عندك)
-        var offset = 120; // عدل الرقم ده حسب طول البار من base.html
-
-        window.scrollTo({
-            top: y - offset,
-            behavior: "smooth"
-        });
-
-        row.focus();  // يحط الكيرسور جوه
-    }
-});
-</script>
-{% endif %}
 {% endblock %}

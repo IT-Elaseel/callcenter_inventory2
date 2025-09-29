@@ -126,16 +126,21 @@
       {% if request.user.is_authenticated %}
         {% with role=request.user.userprofile.role %}
           {% if role == "admin" %}
-               <!-- 🎛️ الكنترول-->
-               <div class="dropdown d-inline-block">
-                 <a class="dropdown-toggle btn btn-sm text-white" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="background:rgba(255,255,255,0.15);">
-                  🎛️ الكنترول
-                 </a>
-                 <ul class="dropdown-menu shadow">
-                   <li><a class="dropdown-item" href="{% url 'add_daily_request' %}">📝 مطلوب الفروع</a></li>
-                   <li><a class="dropdown-item" href="{% url 'control_requests' %}">🎛️شغل الفروع</a></li>
-                 </ul>
-               </div>
+
+            <!-- 🛠️ الإدارة -->
+            <div class="dropdown d-inline-block">
+              <a class="dropdown-toggle btn btn-sm text-white" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="background:rgba(255,255,255,0.15);">
+                ⚙️ الإدارة
+              </a>
+              <ul class="dropdown-menu shadow">
+                <li><a class="dropdown-item" href="/admin/">لوحة Django</a></li>
+                <li><a class="dropdown-item" href="{% url 'manage_users' %}">👥 إدارة المستخدمين</a></li>
+                <li><a class="dropdown-item" href="{% url 'manage_data' %}">🛠️ إدارة البيانات</a></li>
+                <li><a class="dropdown-item" href="{% url 'view_data' %}">📊 عرض البيانات</a></li>
+                <li><a class="dropdown-item" href="{% url 'add_user' %}">➕ إضافة مستخدم</a></li>
+              </ul>
+            </div>
+
             <!-- 📦 المخزون -->
             <div class="dropdown d-inline-block">
               <a class="dropdown-toggle btn btn-sm text-white" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="background:rgba(255,255,255,0.15);">
@@ -143,6 +148,7 @@
               </a>
               <ul class="dropdown-menu shadow">
                 <li><a class="dropdown-item" href="{% url 'branch_inventory' %}">📦 عرض المخزون</a></li>
+                <li><a class="dropdown-item" href="/inventory/update/">📦 تحديث المخزون</a></li>
                 <li><a class="dropdown-item" href="/inventory/transactions/">📜 سجل الإضافات</a></li>
               </ul>
             </div>
@@ -154,7 +160,6 @@
               </a>
               <ul class="dropdown-menu shadow">
                 <li><a class="dropdown-item" href="{% url 'reservations_list' %}">📑 قائمة الحجوزات</a></li>
-                <li><a class="dropdown-item" href="{% url 'branch_dashboard' %}">🏬 لوحة الفروع</a></li>
               </ul>
             </div>
 
@@ -166,27 +171,6 @@
 
             <!-- 📊 التقارير -->
             <a href="/reports/" class="btn btn-sm text-white" style="background:rgba(255,255,255,0.15);">📊 التقارير</a>
-            <!-- 🛠️ الإدارة -->
-            <div class="dropdown d-inline-block">
-              <a class="dropdown-toggle btn btn-sm text-white" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="background:rgba(255,255,255,0.15);">
-                ⚙️ الإدارة
-              </a>
-              <ul class="dropdown-menu shadow">
-                <li><a class="dropdown-item" href="/admin/">لوحة Django</a></li>
-                <li><a class="dropdown-item" href="{% url 'manage_data' %}">🛠️ إدارة البيانات</a></li>
-                <li><a class="dropdown-item" href="{% url 'view_data' %}">📊 عرض البيانات</a></li>
-              </ul>
-            </div>
-              <!-- 🧑‍💼 المستخدمين -->
-            <div class="dropdown d-inline-block">
-              <a class="dropdown-toggle btn btn-sm text-white" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="background:rgba(255,255,255,0.15);">
-                🧑‍💼 المستخدمين
-              </a>
-              <ul class="dropdown-menu shadow">
-                <li><a class="dropdown-item" href="{% url 'manage_users' %}">🧑‍🤝‍🧑 إدارة المستخدمين</a></li>
-                <li><a class="dropdown-item" href="{% url 'add_user' %}">🧑➕ إضافة مستخدم</a></li>
-              </ul>
-            </div>
 
           {% elif role == "callcenter" %}
             <!-- الكول سنتر -->
@@ -196,19 +180,11 @@
             <a href="/customers/" class="btn btn-sm text-white">👥 العملاء</a>
 
           {% elif role == "branch" %}
-            <a href="{% url 'reservations_list' %}" class="btn btn-sm text-white">📑 الحجوزات</a>
-            <a href="/inventory/transactions/" class="btn btn-sm text-white">📜 سجل عمليات المخزون</a>
+            <a href="/" class="btn btn-sm text-white">🏠 الرئيسية</a>
             <a href="{% url 'branch_inventory' %}" class="btn btn-sm text-white">📦 المخزون</a>
             <a href="/inventory/update/" class="btn btn-sm text-white">📦 تحديث المخزون</a>
-            <a href="{% url 'add_daily_request' %}" class="btn btn-sm text-white">📝 الطلب اليومي</a>
-            <a href="/" class="btn btn-sm text-white">🏠 الرئيسية</a>
-          {% elif role == "admin" or role == "control" %}
-            <!-- 🎛️ كنترول الطلبات -->
-            <a href="{% url 'control_requests' %}"
-               class="btn btn-sm text-white"
-               style="background:rgba(255,255,255,0.15);">
-              🎛️ كنترول الطلبات
-            </a>
+            <a href="/inventory/transactions/" class="btn btn-sm text-white">📜 سجل الإضافات</a>
+            <a href="{% url 'reservations_list' %}" class="btn btn-sm text-white">📑 الحجوزات</a>
           {% endif %}
         {% endwith %}
       {% endif %}
@@ -238,70 +214,31 @@
               {% csrf_token %}
 
               {% if success_message %}
-              <script>
-                document.addEventListener("DOMContentLoaded", function() {
-                  Swal.fire({
-                    title: "تم بنجاح 🎉",
-                    text: "{{ success_message }}",
-                    icon: "success",
-                    confirmButtonText: "👌 موافق"
-                  });
-                });
-              </script>
+                <div class="alert alert-success">{{ success_message }}</div>
               {% endif %}
-
 
               <div class="mb-3">
                 <label class="form-label">كلمة المرور الحالية</label>
                 {{ password_form.old_password }}
                 {% if password_form.old_password.errors %}
-                <script>
-                  document.addEventListener("DOMContentLoaded", function() {
-                    Swal.fire({
-                      title: "خطأ ❌",
-                      text: "{{ password_form.old_password.errors.0 }}",
-                      icon: "error",
-                      confirmButtonText: "إعادة المحاولة"
-                    });
-                  });
-                </script>
+                  <div class="alert alert-danger mt-1 p-1">{{ password_form.old_password.errors.0 }}</div>
                 {% endif %}
-
               </div>
 
               <div class="mb-3">
                 <label class="form-label">كلمة المرور الجديدة</label>
                 {{ password_form.new_password1 }}
                 {% if password_form.new_password1.errors %}
-              <script>
-                document.addEventListener("DOMContentLoaded", function() {
-                  Swal.fire({
-                    title: "خطأ ❌",
-                    text: "{{ password_form.new_password1.errors.0 }}",
-                    icon: "error",
-                    confirmButtonText: "تمام"
-                  });
-                });
-              </script>
-              {% endif %}
+                  <div class="alert alert-danger mt-1 p-1">{{ password_form.new_password1.errors.0 }}</div>
+                {% endif %}
               </div>
 
               <div class="mb-3">
                 <label class="form-label">تأكيد كلمة المرور</label>
                 {{ password_form.new_password2 }}
                 {% if password_form.new_password2.errors %}
-                <script>
-                  document.addEventListener("DOMContentLoaded", function() {
-                    Swal.fire({
-                      title: "خطأ ❌",
-                      text: "{{ password_form.new_password2.errors.0 }}",
-                      icon: "error",
-                      confirmButtonText: "تمام"
-                    });
-                  });
-                </script>
+                  <div class="alert alert-danger mt-1 p-1">{{ password_form.new_password2.errors.0 }}</div>
                 {% endif %}
-
               </div>
 
               <button type="submit" class="btn btn-primary w-100 mt-2">💾 حفظ التغييرات</button>
@@ -320,7 +257,7 @@
   });
 </script>
 {% endif %}
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

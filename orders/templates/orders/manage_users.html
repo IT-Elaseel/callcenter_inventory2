@@ -11,15 +11,19 @@
              value="{{ username|default:'' }}">
     </div>
     <div class="col-md-4">
-      <select name="role" class="form-select">
+      <select name="role" class="form-select" onchange="this.form.submit()">
         <option value="">-- اختر النوع --</option>
         <option value="admin" {% if role == "admin" %}selected{% endif %}>👑 مدير</option>
         <option value="branch" {% if role == "branch" %}selected{% endif %}>🏪 فرع</option>
         <option value="callcenter" {% if role == "callcenter" %}selected{% endif %}>📞 كول سنتر</option>
+        <option value="control" {% if role == "control" %}selected{% endif %}>🎛️ كنترول</option>
+        <option value="production" {% if role == "production" %}selected{% endif %}>🏭 إنتاج</option>
+        <option value="warehouse" {% if role == "warehouse" %}selected{% endif %}>📦 مخزن</option>
+        <option value="quality" {% if role == "quality" %}selected{% endif %}>✅ جودة</option>
+        <option value="maintenance" {% if role == "maintenance" %}selected{% endif %}>🛠️ صيانة</option>
+        <option value="driver" {% if role == "driver" %}selected{% endif %}>🚚 سائق</option>
+        <option value="delivery" {% if role == "delivery" %}selected{% endif %}>🏍️ دليفري</option>
       </select>
-    </div>
-    <div class="col-md-4">
-      <button type="submit" class="btn btn-primary w-100">تصفية</button>
     </div>
   </form>
 
@@ -31,6 +35,7 @@
         <th>اسم المستخدم</th>
         <th>البريد</th>
         <th>الدور</th>
+        <th>آخر إعادة تعيين</th> <!-- ✨ الجديد -->
         <th>إجراءات</th>
       </tr>
     </thead>
@@ -40,7 +45,14 @@
           <td>{{ forloop.counter }}</td>
           <td>{{ u.username }}</td>
           <td>{{ u.email }}</td>
-          <td>{{ u.userprofile.role }}</td>
+          <td>{{ u.userprofile.get_role_display }}</td>
+          <td>
+            {% if u.userprofile.last_password_reset %}
+              {{ u.userprofile.last_password_reset|date:"Y-m-d H:i:s" }}
+            {% else %}
+              -
+            {% endif %}
+          </td>
           <td>
             <form method="post" action="{% url 'manage_users' %}" class="d-inline">
               {% csrf_token %}
@@ -54,7 +66,7 @@
         </tr>
       {% empty %}
         <tr>
-          <td colspan="5" class="text-center">لا يوجد مستخدمين</td>
+          <td colspan="6" class="text-center">لا يوجد مستخدمين</td>
         </tr>
       {% endfor %}
     </tbody>

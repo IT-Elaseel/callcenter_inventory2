@@ -1,0 +1,115 @@
+{% extends "orders/base.html" %}
+{% block title %}لوحة الفرع{% endblock %}
+
+{% block content %}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ branch.name }} Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+        th { background: #f4f4f4; }
+        .btn-action {
+          padding: 6px 14px;
+          text-decoration: none;
+          border-radius: 4px;
+          border: 1px solid #ccc;
+          background-color: #fff;
+          color: #333;
+          display: inline-block;
+          margin-right: 8px;
+          transition: background-color 0.3s, color 0.3s;
+        }
+
+        .btn-confirm:hover {
+          background-color: #28a745;
+          color: #fff;
+        }
+
+        .btn-cancel:hover {
+          background-color: #dc3545;
+          color: #fff;
+        }
+    </style>
+</head>
+<body>
+{% if is_admin %}
+    <form method="get">
+        <label>اختار الفرع:</label>
+        <select name="branch" onchange="this.form.submit()">
+            <option value="">-- اختار فرع --</option>
+            {% for b in branches %}
+                <option value="{{ b.id }}" {% if b.id|stringformat:'s' == selected_branch_id %}selected{% endif %}>
+                    {{ b.name }}
+                </option>
+            {% endfor %}
+        </select>
+    </form>
+    {% if is_admin and branch %}
+    <p>
+      📥 تصدير الحجوزات لــ {{ branch.name }}
+        <a href="{% url 'export_reservations_excel' branch.id %}">Excel</a>
+    </p>
+    {% endif %}
+    <h1>🏬 عرض المدير {% if branch %}: {{ branch.name }}{% endif %}</h1>
+{% else %}
+    <h1>🏬 {{ branch.name }}</h1>
+{% endif %}
+
+    <h2>الحجوزات</h2>
+    <table>
+        <tr>
+            <th>ID</th>
+            <th>Customer</th>
+            <th>Phone</th>
+            <th>Product</th>
+            <th>Quantity</th>
+            <th>Status</th>
+            <th>Created At</th>
+            <th>Decision At</th>
+            <th>Last Branch Action</th>
+            <th>Reserved By</th>
+            <th>Action</th>
+        </tr>
+        {% for res in reservations %}
+          {% if res.status == "pending" %}
+          <tr>
+              <td>{{ res.id }}</td>
+              <td>{{ res.customer.name }}</td>
+              <td>{{ res.customer.phone }}</td>
+              <td>{{ res.product.name }}</td>
+              <td>{{ res.quantity }}</td>
+              <td>{{ res.get_status_display }}</td>
+              <td>{{ res.created_at|date:"Y-m-d H:i" }}</td>
+              <td>{{ res.decision_at|date:"Y-m-d H:i" }}</td>
+              <td>
+                  {% if res.branch_last_modified_at %}
+                      {{ res.branch_last_modified_at|date:"Y-m-d H:i" }}
+                  {% else %}-{% endif %}
+              </td>
+              <td>
+                  {% if res.reserved_by %}
+                      {{ res.reserved_by.username }} ({{ res.created_at|date:"Y-m-d H:i" }})
+                  {% else %}-{% endif %}
+              </td>
+              <td>
+                  <a href="{% url 'update_reservation_status' res.id 'confirmed' %}"
+                     class="btn-action btn-confirm">
+                     ✅ تأكيد
+                  </a>
+                  <a href="{% url 'update_reservation_status' res.id 'cancelled' %}"
+                     class="btn-action btn-cancel">
+                     ❌ إلغاء
+                  </a>
+              </td>
+          </tr>
+          {% endif %}
+        {% empty %}
+          <tr><td colspan="10">لا توجد حجوزات معلقة</td></tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
+{% endblock %}

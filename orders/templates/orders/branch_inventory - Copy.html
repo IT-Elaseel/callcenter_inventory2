@@ -1,0 +1,152 @@
+{% extends "orders/base.html" %}
+{% block title %}📦 المخزون{% endblock %}
+
+{% block content %}
+<div class="inventory-dashboard">
+
+    <!-- ✅ الجزء الثابت -->
+    <div class="header-fixed">
+        <h2 class="page-title">
+          📦 المخزون
+          {% if branch %}
+            - {{ branch.name }}
+          {% elif branches %}
+            - كل الفروع
+          {% endif %}
+        </h2>
+
+        <!-- 🔽 فلترة الأقسام + البحث + الفروع -->
+        <form method="get" id="filterForm" class="filters">
+          <div class="d-flex flex-wrap gap-3 align-items-end">
+
+            {% if branches %}
+            <div class="form-group">
+              <label class="form-label">الفرع:</label>
+              <select name="branch" class="form-select" onchange="this.form.submit()">
+                <option value="all" {% if not selected_branch %}selected{% endif %}>-- كل الفروع --</option>
+                {% for b in branches %}
+                  <option value="{{ b.id }}" {% if selected_branch == b.id %}selected{% endif %}>
+                    {{ b.name }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+            {% endif %}
+
+            <div class="form-group">
+              <label class="form-label">القسم:</label>
+              <select name="category" class="form-select" onchange="this.form.submit()">
+                <option value="">-- كل الأقسام --</option>
+                {% for c in categories %}
+                  <option value="{{ c.id }}" {% if selected_category == c.id %}selected{% endif %}>
+                    {{ c.name }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">بحث:</label>
+              <input type="text" class="form-control" name="q" value="{{ query|default:'' }}" placeholder="اسم المنتج">
+            </div>
+
+            <div>
+              <button type="submit" class="btn btn-primary">عرض</button>
+            </div>
+          </div>
+        </form>
+    </div>
+
+    <!-- ✅ الجدول -->
+    <div class="table-wrapper">
+      <table class="styled-table">
+        <thead>
+          <tr>
+            <th style="width:40%;">المنتج</th>
+            <th style="width:20%;">القسم</th>
+            {% if branches %}<th style="width:20%;">الفرع</th>{% endif %}
+            <th style="width:20%;">الكمية المتوفرة</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for inv in inventories %}
+          <tr>
+            <td class="text-start">{{ inv.product.name }}</td>
+            <td>{{ inv.product.category.name }}</td>
+            {% if branches %}<td>{{ inv.branch.name }}</td>{% endif %}
+            <td>{{ inv.quantity }}</td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="{% if branches %}4{% else %}3{% endif %}" class="text-center">❌ لا توجد منتجات مطابقة.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+</div>
+
+<style>
+  html, body {
+      height: 100%;
+      margin: 0;
+      overflow: hidden; /* يمنع Scroll خارجي */
+  }
+
+  .inventory-dashboard {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+  }
+
+  .header-fixed {
+      position: sticky;
+      top: 0;
+      background: #fff;
+      z-index: 20;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #ddd;
+  }
+
+  .page-title { font-size:24px; margin-bottom:15px; color:#222; font-weight:700; }
+
+  .filters { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+
+  .table-wrapper {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      border:1px solid #ddd;
+      border-radius:8px;
+  }
+
+  .styled-table { width:100%; border-collapse:collapse; font-size:15px; }
+  .styled-table th, .styled-table td { padding:12px; text-align:center; border:1px solid #eee; }
+  .styled-table th {
+    position: sticky;
+    top: 0;
+    background: #000;   /* خلفية سوداء */
+    color: #fff;        /* الخط أبيض */
+    font-weight: bold;  /* يخلي الخط Bold */
+    z-index: 5;
+    font-size: 16px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  }
+
+  /* Hover Effect */
+  .styled-table tbody tr:hover > td {
+      background-color: #f8d7da !important;
+      color: #000 !important;
+      transition: background 0.2s ease;
+  }
+</style>
+
+<script>
+  document.querySelector("input[name='q']").addEventListener("keypress", function(e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      document.getElementById("filterForm").submit();
+    }
+  });
+</script>
+{% endblock %}

@@ -194,7 +194,6 @@ def create_or_update_user_profile(sender, instance, created, **kwargs):
 #-------------------------------------------------------------------
 class DailyRequest(models.Model):
     branch = models.ForeignKey(Branch, on_delete=models.CASCADE)
-    category = models.ForeignKey("Category", on_delete=models.CASCADE, null=True, blank=True)
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField()
     created_at = models.DateTimeField(auto_now_add=True)
@@ -211,10 +210,3 @@ class DailyRequest(models.Model):
     def __str__(self):
         return f"{self.branch.name} - {self.product.name} ({self.quantity})"
 #-------------------------------------------------------------------------------------------------------
-from django.db import models
-
-class OrderCounter(models.Model):
-    current_number = models.PositiveIntegerField(default=0)
-
-    def __str__(self):
-        return f"Current Order Number: {self.current_number}"

@@ -29,9 +29,6 @@ def is_admin(user):
         or user.groups.filter(name="admin").exists()
         or (hasattr(user, "userprofile") and user.userprofile.role == "admin")
     )
-def is_control(user):
-    return user.is_authenticated and user.userprofile.role == "control"
-
 #---------------------------------------------تصدير الحجوزات الى اكسيل----------------------------------------------------------
 def export_reservations_excel(request, branch_id):
     reservations = Reservation.objects.filter(branch_id=branch_id).select_related("product", "branch", "customer").order_by("-created_at")
@@ -622,8 +619,6 @@ def login_view(request):
                     return redirect("callcenter_dashboard")
                 elif profile.role == "branch":
                     return redirect("branch_dashboard")
-                elif profile.role == "control":   # ✅ جديد
-                    return redirect("control_requests")
             return redirect("home")
         else:
             return render(request, "orders/login.html", {"error": "❌ بيانات الدخول غير صحيحة"})
@@ -646,9 +641,6 @@ def root_redirect(request):
             return redirect("callcenter_dashboard")
         elif profile.role == "branch":
             return redirect("branch_dashboard")
-        elif profile.role == "control":   # ✅ جديد
-            return redirect("control_requests")
-
 
     # fallback لو مفيش role
     return redirect("login")
@@ -1291,18 +1283,6 @@ from django.utils import timezone
 from .models import DailyRequest, Product, OrderCounter
 @login_required
 def add_daily_request(request):
-    profile2 = getattr(request.user, "userprofile", None)
-
-    # 🚫 لو مش كنترول او ادمن
-    if not profile2 or profile2.role not in ["branch"]:
-        return render(
-            request,
-            "orders/no_permission.html",
-            {
-                "error_message": "🚫 غير مسموح لك بدخول هذه الصفحة. من فضلك تواصل مع مدير النظام لو محتاج صلاحية."
-            },
-            status=403
-        )
     branch = request.user.userprofile.branch
 
     # 🔑 رقم الطلبية مؤقت مخزن في السيشن
@@ -1371,26 +1351,13 @@ def add_daily_request(request):
     })
 
 #-------------------------------------------------------------------------------------------------------
-from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib.auth.decorators import login_required
 from django.utils.timezone import localdate, now
 from django.shortcuts import render, redirect
 from .models import DailyRequest, Branch
 
 @login_required
 def control_requests(request):
-    profile = getattr(request.user, "userprofile", None)
-
-    # 🚫 لو مش كنترول او ادمن
-    if not profile or profile.role not in ["control", "admin"]:
-        return render(
-            request,
-            "orders/no_permission.html",
-            {
-                "error_message": "🚫 غير مسموح لك بدخول هذه الصفحة. من فضلك تواصل مع مدير النظام لو محتاج صلاحية."
-            },
-            status=403
-        )
-
     today = timezone.now().date()  # تاريخ اليوم
     branch_id = request.GET.get("branch")
     start_date = request.GET.get("start_date", str(localdate()))
@@ -1430,7 +1397,6 @@ from django.shortcuts import redirect, get_list_or_404
 from django.views.decorators.http import require_POST
 
 @require_POST
-@user_passes_test(is_control)
 @login_required
 def mark_printed(request, order_number):
     # جيب الطلبية كلها بنفس رقم الطلب

@@ -29,9 +29,6 @@ def is_admin(user):
         or user.groups.filter(name="admin").exists()
         or (hasattr(user, "userprofile") and user.userprofile.role == "admin")
     )
-def is_control(user):
-    return user.is_authenticated and user.userprofile.role == "control"
-
 #---------------------------------------------تصدير الحجوزات الى اكسيل----------------------------------------------------------
 def export_reservations_excel(request, branch_id):
     reservations = Reservation.objects.filter(branch_id=branch_id).select_related("product", "branch", "customer").order_by("-created_at")
@@ -622,8 +619,6 @@ def login_view(request):
                     return redirect("callcenter_dashboard")
                 elif profile.role == "branch":
                     return redirect("branch_dashboard")
-                elif profile.role == "control":   # ✅ جديد
-                    return redirect("control_requests")
             return redirect("home")
         else:
             return render(request, "orders/login.html", {"error": "❌ بيانات الدخول غير صحيحة"})
@@ -646,9 +641,6 @@ def root_redirect(request):
             return redirect("callcenter_dashboard")
         elif profile.role == "branch":
             return redirect("branch_dashboard")
-        elif profile.role == "control":   # ✅ جديد
-            return redirect("control_requests")
-
 
     # fallback لو مفيش role
     return redirect("login")
@@ -1288,56 +1280,34 @@ def view_data(request):
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect
 from django.utils import timezone
-from .models import DailyRequest, Product, OrderCounter
+import uuid
+from .models import DailyRequest, Product
+
+
 @login_required
 def add_daily_request(request):
-    profile2 = getattr(request.user, "userprofile", None)
-
-    # 🚫 لو مش كنترول او ادمن
-    if not profile2 or profile2.role not in ["branch"]:
-        return render(
-            request,
-            "orders/no_permission.html",
-            {
-                "error_message": "🚫 غير مسموح لك بدخول هذه الصفحة. من فضلك تواصل مع مدير النظام لو محتاج صلاحية."
-            },
-            status=403
-        )
     branch = request.user.userprofile.branch
 
     # 🔑 رقم الطلبية مؤقت مخزن في السيشن
     order_number = request.session.get("current_order_number")
     if not order_number:
-        counter, _ = OrderCounter.objects.get_or_create(id=1)
-        counter.current_number += 1
-        counter.save()
-        order_number = str(counter.current_number)
+        order_number = str(uuid.uuid4())[:8]  # رقم عشوائي قصير
         request.session["current_order_number"] = order_number
-
-    # 🟢 رجّع القسم المختار (لو موجود في السيشن)
-    selected_category = request.session.get("selected_category")
 
     if request.method == "POST":
         if "add_item" in request.POST:
-            category_id = request.POST.get("category")
             product_id = request.POST.get("product")
             qty = int(request.POST.get("quantity", 1))
 
             if product_id and qty > 0:
                 DailyRequest.objects.create(
                     branch=branch,
-                    category_id=category_id,
                     product_id=product_id,
                     quantity=qty,
                     created_by=request.user,
                     order_number=order_number,
                     is_confirmed=False
                 )
-
-            # ✅ خزّن القسم المختار في السيشن عشان يفضل بعد الريدايركت
-            request.session["selected_category"] = category_id
-
-            return redirect("add_daily_request")
 
         elif "confirm_order" in request.POST:
             now = timezone.now()
@@ -1348,14 +1318,12 @@ def add_daily_request(request):
                 is_confirmed=True,
                 confirmed_at=now
             )
-            # 🧹 امسح رقم الطلبية و القسم بعد التأكيد
+
+            # 🧹 امسح رقم الطلبية من السيشن عشان يبتدي واحدة جديدة
             request.session["current_order_number"] = None
-            request.session["selected_category"] = None
             return redirect("add_daily_request")
 
-    # البيانات للـ HTML
     products = Product.objects.all()
-    categories = Category.objects.all()
     requests_today = DailyRequest.objects.filter(
         order_number=order_number,
         branch=branch,
@@ -1364,33 +1332,18 @@ def add_daily_request(request):
 
     return render(request, "orders/add_daily_request.html", {
         "products": products,
-        "categories": categories,
         "requests_today": requests_today,
         "order_number": order_number,
-        "selected_category": selected_category,  # ✅ بيرجع القسم للـ HTML
     })
 
 #-------------------------------------------------------------------------------------------------------
-from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib.auth.decorators import login_required
 from django.utils.timezone import localdate, now
 from django.shortcuts import render, redirect
 from .models import DailyRequest, Branch
 
 @login_required
 def control_requests(request):
-    profile = getattr(request.user, "userprofile", None)
-
-    # 🚫 لو مش كنترول او ادمن
-    if not profile or profile.role not in ["control", "admin"]:
-        return render(
-            request,
-            "orders/no_permission.html",
-            {
-                "error_message": "🚫 غير مسموح لك بدخول هذه الصفحة. من فضلك تواصل مع مدير النظام لو محتاج صلاحية."
-            },
-            status=403
-        )
-
     today = timezone.now().date()  # تاريخ اليوم
     branch_id = request.GET.get("branch")
     start_date = request.GET.get("start_date", str(localdate()))
@@ -1430,7 +1383,6 @@ from django.shortcuts import redirect, get_list_or_404
 from django.views.decorators.http import require_POST
 
 @require_POST
-@user_passes_test(is_control)
 @login_required
 def mark_printed(request, order_number):
     # جيب الطلبية كلها بنفس رقم الطلب
