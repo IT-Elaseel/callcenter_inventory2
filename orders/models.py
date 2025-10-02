@@ -172,6 +172,8 @@ class UserProfile(models.Model):
         ('maintenance', 'صيانة'),
         ('driver', 'سائق'),
         ('delivery', 'دليفري'),
+        ("hr", "HR"),
+        ("hr_help", "HR Help"),
     ]
 
     user = models.OneToOneField(User, on_delete=models.CASCADE)

@@ -23,6 +23,8 @@
         <option value="maintenance" {% if role == "maintenance" %}selected{% endif %}>🛠️ صيانة</option>
         <option value="driver" {% if role == "driver" %}selected{% endif %}>🚚 سائق</option>
         <option value="delivery" {% if role == "delivery" %}selected{% endif %}>🏍️ دليفري</option>
+        <option value="hr" {% if role == "hr" %}selected{% endif %}>🧑‍💼 HR</option>
+        <option value="hr_help" {% if role == "hr_help" %}selected{% endif %}>🤝 HR Help</option>
       </select>
     </div>
   </form>
@@ -54,15 +56,17 @@
             {% endif %}
           </td>
           <td>
-            <form method="post" action="{% url 'manage_users' %}" class="d-inline">
-              {% csrf_token %}
-              <button type="submit" name="reset_password" value="{{ u.id }}" class="btn btn-sm btn-warning">🔑 إعادة تعيين</button>
-            </form>
-            <form method="post" action="{% url 'manage_users' %}" class="d-inline">
-              {% csrf_token %}
-              <button type="submit" name="delete_user" value="{{ u.id }}" class="btn btn-sm btn-danger">🗑 حذف</button>
-            </form>
-          </td>
+          <form method="post" action="{% url 'manage_users' %}?username={{ username }}&role={{ role }}" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" name="reset_password" value="{{ u.id }}" class="btn btn-sm btn-warning">🔑 إعادة تعيين</button>
+          </form>
+
+          <form method="post" action="{% url 'manage_users' %}?username={{ username }}&role={{ role }}" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" name="delete_user" value="{{ u.id }}" class="btn btn-sm btn-danger">🗑 حذف</button>
+          </form>
+        </td>
+
         </tr>
       {% empty %}
         <tr>

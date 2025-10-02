@@ -101,8 +101,11 @@ USE_TZ = True
 # 🔹 الملفات الثابتة
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+# 👇 أضف ده
+STATICFILES_DIRS = [
+    BASE_DIR / "static",   # ده اللي فيه img/ElAseel_logo_bw.png
+]
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
-
 # 🔹 ملفات الميديا (لو بتستخدمها)
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"

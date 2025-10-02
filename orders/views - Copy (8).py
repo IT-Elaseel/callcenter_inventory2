@@ -1154,11 +1154,6 @@ def manage_data(request):
         "success_message": success_message,
     })
 #-------------------------------------------------------------------------------------------------------
-from django.utils import timezone
-from django.conf import settings
-from django.shortcuts import render, redirect
-from django.contrib.auth.decorators import login_required, user_passes_test
-
 @login_required
 @user_passes_test(is_admin)
 def manage_users(request):
@@ -1186,12 +1181,12 @@ def manage_users(request):
             u.set_password(settings.DEFAULT_USER_PASSWORD)
             u.save()
 
+            # ✨ تحديث التاريخ
             if hasattr(u, "userprofile"):
                 u.userprofile.last_password_reset = timezone.now()
                 u.userprofile.save()
 
-        # ✅ بعد أي أكشن: رجع لنفس الرابط بالفلترة الحالية
-        return redirect(request.get_full_path())
+        return redirect("manage_users")
 
     return render(request, "orders/manage_users.html", {
         "users": users,
@@ -1199,25 +1194,16 @@ def manage_users(request):
         "role": role,
     })
 #-------------------------------------------------------------------------------------------------------
-from django.urls import reverse
-from urllib.parse import urlencode
-
 @login_required
 @user_passes_test(is_admin)
 def edit_category(request, pk):
     category = get_object_or_404(Category, pk=pk)
     success = False
-
-    # ✅ نحتفظ بالـ query string (عشان نرجع بنفس الفلاتر)
-    query_params = request.GET.dict()
-    query_string = f"?{urlencode(query_params)}" if query_params else ""
-
     if request.method == "POST":
         form = CategoryForm(request.POST, instance=category)
         if form.is_valid():
             form.save()
-            # ✅ بعد الحفظ رجع لنفس الصفحة مع الفلاتر
-            return redirect(reverse("view_data") + query_string)
+            success = True
     else:
         form = CategoryForm(instance=category)
 
@@ -1225,28 +1211,19 @@ def edit_category(request, pk):
         "form": form,
         "title": "✏️ تعديل قسم",
         "success": success,
-        "redirect_url": reverse("view_data") + query_string,
+        "redirect_url": "view_data",
     })
 #-------------------------------------------------------------------------------------------------------
-from django.urls import reverse
-from urllib.parse import urlencode
-
 @login_required
 @user_passes_test(is_admin)
 def edit_product(request, pk):
     product = get_object_or_404(Product, pk=pk)
     success = False
-
-    # ✅ نحتفظ بالـ query string
-    query_params = request.GET.dict()
-    query_string = f"?{urlencode(query_params)}" if query_params else ""
-
     if request.method == "POST":
         form = ProductForm(request.POST, instance=product)
         if form.is_valid():
             form.save()
-            # ✅ بعد الحفظ رجع لنفس الصفحة مع الفلاتر
-            return redirect(reverse("view_data") + query_string)
+            success = True
     else:
         form = ProductForm(instance=product)
 
@@ -1254,27 +1231,19 @@ def edit_product(request, pk):
         "form": form,
         "title": "✏️ تعديل منتج",
         "success": success,
-        "redirect_url": reverse("view_data") + query_string,
+        "redirect_url": "view_data",
     })
 #-------------------------------------------------------------------------------------------------------
-from django.urls import reverse
-from urllib.parse import urlencode
-
 @login_required
 @user_passes_test(is_admin)
 def edit_branch(request, pk):
     branch = get_object_or_404(Branch, pk=pk)
     success = False
-
-    query_params = request.GET.dict()
-    query_string = f"?{urlencode(query_params)}" if query_params else ""
-
     if request.method == "POST":
         form = BranchForm(request.POST, instance=branch)
         if form.is_valid():
             form.save()
-            # ✅ استخدم reverse
-            return redirect(reverse("view_data") + query_string)
+            success = True
     else:
         form = BranchForm(instance=branch)
 
@@ -1282,7 +1251,7 @@ def edit_branch(request, pk):
         "form": form,
         "title": "✏️ تعديل فرع",
         "success": success,
-        "redirect_url": reverse("view_data") + query_string,
+        "redirect_url": "view_data",
     })
 #-------------------------------------------------------------------------------------------------------
 @login_required
@@ -1290,10 +1259,9 @@ def edit_branch(request, pk):
 def view_data(request):
     selected_table = request.GET.get("table", "categories")
     query = request.GET.get("q", "")
-    selected_category = request.GET.get("category", "")  # ✅ نقرأ القسم المختار
     success_message = None
 
-    # ✅ حذف
+    # ✅ حذف داخل view_data بدل manage_data
     if request.method == "POST":
         if "delete_category" in request.POST:
             Category.objects.filter(id=request.POST.get("delete_category")).delete()
@@ -1309,12 +1277,8 @@ def view_data(request):
     products = Product.objects.all()
     branches = Branch.objects.all()
 
-    # ✅ فلترة المنتجات
-    if selected_table == "products":
-        if query:
-            products = products.filter(name__icontains=query)
-        if selected_category:
-            products = products.filter(category_id=selected_category)
+    if query and selected_table == "products":
+        products = products.filter(name__icontains=query)
 
     return render(request, "orders/view_data.html", {
         "categories": categories,
@@ -1322,7 +1286,6 @@ def view_data(request):
         "branches": branches,
         "selected_table": selected_table,
         "query": query,
-        "selected_category": selected_category,
         "success_message": success_message,
     })
 #-------------------------------------------------------------------------------------------------------
@@ -1482,7 +1445,7 @@ def control_requests(request):
     branch_id = request.GET.get("branch")
     start_date = request.GET.get("start_date", str(localdate()))
     end_date = request.GET.get("end_date", str(localdate()))
-    printed_filter = request.GET.get("printed", "no")
+    printed_filter = request.GET.get("printed", "all")
 
     requests_qs = DailyRequest.objects.filter(is_confirmed=True, created_at__date__range=[start_date, end_date])
 

@@ -14,10 +14,19 @@
       <option value="branches" {% if selected_table == "branches" %}selected{% endif %}>الفروع</option>
     </select>
 
-    <!-- 🔍 مربع بحث للمنتجات -->
     {% if selected_table == "products" %}
-      <input type="text" name="q" class="form-control" placeholder="بحث عن منتج..." value="{{ query|default:'' }}">
-      <button type="submit" class="btn btn-primary">بحث</button>
+    <!-- ✅ فلتر بالقسم -->
+    <select name="category" class="form-select" style="max-width:200px;" onchange="this.form.submit()">
+      <option value="">-- كل الأقسام --</option>
+      {% for c in categories %}
+        <option value="{{ c.id }}" {% if selected_category == c.id|stringformat:"s" %}selected{% endif %}>
+          {{ c.name }}
+        </option>
+      {% endfor %}
+    </select>
+    <!-- 🔍 مربع بحث للمنتجات -->
+      <input type="text" name="q" class="form-control" placeholder="بحث عن منتج..." value="{{ query|default:'' }}" autofocus>
+      <!--<button type="submit" class="btn btn-primary">بحث</button> -->
     {% endif %}
   </form>
 
@@ -42,7 +51,8 @@
             <td>{{ c.description }}</td>
             <td>{{ c.updated_at|date:"Y-m-d H:i" }}</td>
             <td>
-              <a href="{% url 'edit_category' c.id %}" class="btn btn-sm btn-warning">✏️ تعديل</a>
+              <a href="{% url 'edit_category' c.id %}?table={{ selected_table }}&q={{ query }}&category={{ selected_category }}"
+   class="btn btn-sm btn-warning">✏️ تعديل</a>
               <form method="post" class="delete-form d-inline">
                 {% csrf_token %}
                 <input type="hidden" name="delete_category" value="{{ c.id }}">
@@ -82,7 +92,8 @@
             <td>{{ p.get_unit_display }}</td>
             <td>{{ p.updated_at|date:"Y-m-d H:i" }}</td>
             <td>
-              <a href="{% url 'edit_product' p.id %}" class="btn btn-sm btn-warning">✏️ تعديل</a>
+              <a href="{% url 'edit_product' p.id %}?table={{ selected_table }}&q={{ query }}&category={{ selected_category }}"
+   class="btn btn-sm btn-warning">✏️ تعديل</a>
               <form method="post" class="delete-form d-inline">
                 {% csrf_token %}
                 <input type="hidden" name="delete_product" value="{{ p.id }}">
@@ -120,7 +131,8 @@
             <td>{{ b.phone }}</td>
             <td>{{ b.updated_at|date:"Y-m-d H:i" }}</td>
             <td>
-              <a href="{% url 'edit_branch' b.id %}" class="btn btn-sm btn-warning">✏️ تعديل</a>
+              <a href="{% url 'edit_branch' b.id %}?table={{ selected_table }}&q={{ query }}&category={{ selected_category }}"
+   class="btn btn-sm btn-warning">✏️ تعديل</a>
               <form method="post" class="delete-form d-inline">
                 {% csrf_token %}
                 <input type="hidden" name="delete_branch" value="{{ b.id }}">

@@ -1,0 +1,193 @@
+{% extends "orders/base.html" %}
+{% block content %}
+<style>
+  /* ✅ تثبيت الـ Navbar */
+  .navbar {
+    position: sticky;
+    top: 0;
+    z-index: 1050; /* يخليها فوق أي عنصر تاني */
+  }
+  .table th.fit {
+    white-space: nowrap;
+    width: 1%;
+    font-weight: bold;
+    text-align: right;
+  }
+  /* ✅ إضافة مسافات بين الأزرار */
+.d-flex.gap-2 .btn {
+  margin-right: 5px;
+}
+
+/* ✅ تأثير هوفر */
+.custom-btn {
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+.custom-btn:hover {
+  transform: translateY(-2px);
+  opacity: 0.9;
+}
+</style>
+<div class="container py-4">
+  <!-- العنوان والأزرار -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="mb-0">📋 تفاصيل الطلب <span class="text-primary">#{{ applicant.order_number }}</span></h3>
+    <div class="d-flex gap-2"> <!-- ✅ استبدلت btn-group بـ d-flex gap-2 -->
+      <a href="{% url 'hr:applicant_edit' applicant.order_number %}" class="btn btn-sm btn-warning custom-btn">✏️ تعديل</a>
+      <a href="{% url 'hr:applicant_decision' applicant.order_number %}" class="btn btn-sm btn-dark custom-btn">✅ قرار</a>
+      <a href="{% url 'hr:export_applicant_excel' applicant.order_number %}" class="btn btn-sm btn-success custom-btn">📊 إكسل</a>
+      <a href="{% url 'hr:applicant_list' %}" class="btn btn-sm btn-secondary custom-btn">↩️ العودة إلى جميع الطلبات</a>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <!-- العمود الرئيسي -->
+    <div class="col-md-8">
+      <!-- البيانات الأساسية -->
+      <div class="card shadow-sm mb-3">
+    <div class="card-header bg-light fw-bold">👤 البيانات الأساسية</div>
+    <div class="card-body p-0">
+      <table class="table table-borderless m-0 align-middle">
+        <tbody>
+          <tr>
+            <td><span>{{ applicant.full_name }}</span></td>
+            <th class="fit">الاسم</th>
+            <td><span>{{ applicant.national_id }}</span></td>
+            <th class="fit">الرقم القومي</th>
+          </tr>
+          <tr>
+            <td><span>{{ applicant.phone }}</span></td>
+            <th class="fit">الهاتف</th>
+            <td><span>{{ applicant.get_marital_status_display }}</span></td>
+            <th class="fit">الحالة الاجتماعية</th>
+          </tr>
+          <tr>
+            <td><span>{{ applicant.get_nationality_display }}</span></td>
+            <th class="fit">الجنسية</th>
+            <td><span>{{ applicant.get_gender_display }}</span></td>
+            <th class="fit">النوع</th>
+          </tr>
+          <tr>
+            <td><span>{{ applicant.get_religion_display }}</span></td>
+            <th class="fit">الديانة</th>
+            <td><span>{{ applicant.get_military_status_display }}</span></td>
+            <th class="fit">الموقف من التجنيد</th>
+          </tr>
+          <tr>
+            <td><span>{{ applicant.relative_name }} - {{ applicant.relative_phone }}</span></td>
+            <th class="fit">القريب</th>
+            <td><span>{{ applicant.is_smoker|yesno:"نعم,لا" }}</span></td>
+            <th class="fit">مدخن</th>
+          </tr>
+          <tr>
+            <td><span>{{ applicant.get_vehicle_ownership_display }}</span></td>
+            <th class="fit">وسيلة/سيارة</th>
+            <td>
+              <span class="badge
+                {% if applicant.status == 'accepted' %}bg-success
+                {% elif applicant.status == 'rejected' %}bg-danger
+                {% else %}bg-secondary{% endif %}">
+                {{ applicant.get_status_display }}
+              </span>
+            </td>
+            <th class="fit">الحالة</th>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+      <!-- المؤهل الدراسي -->
+      <div class="card shadow-sm mb-3">
+        <div class="card-header bg-light fw-bold">🎓 المؤهل الدراسي</div>
+        <div class="card-body p-0">
+          <table class="table table-borderless m-0 align-middle">
+            <tbody>
+              <tr>
+                <td>{{ applicant.get_edu_degree_display }}</td>
+                <th class="fit">المؤهل</th>
+                <td>{{ applicant.grad_year }}</td>
+                <th class="fit">سنة التخرج</th>
+              </tr>
+              <tr>
+                <td>{{ applicant.edu_institution }}</td>
+                <th class="fit">جهة الحصول</th>
+                <td>{{ applicant.specialization }}</td>
+                <th class="fit">التخصص</th>
+              </tr>
+              <tr>
+                <td>{{ applicant.postgrad_study }}</td>
+                <th class="fit">دراسات عليا</th>
+                <td>{{ applicant.get_edu_grade_display }}</td>
+                <th class="fit">التقدير</th>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- الخبرات السابقة -->
+      <div class="card shadow-sm">
+        <div class="card-header bg-light fw-bold">💼 الخبرات السابقة</div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle">
+              <thead class="table-dark">
+                <tr>
+                  <th>جهة العمل</th>
+                  <th>الوظيفة</th>
+                  <th>السنوات</th>
+                  <th>الراتب</th>
+                  <th>سبب الترك</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for e in applicant.experiences.all %}
+                <tr>
+                  <td>{{ e.employer }}</td>
+                  <td>{{ e.job_title }}</td>
+                  <td>{{ e.years }}</td>
+                  <td>{{ e.salary }}</td>
+                  <td>{{ e.reason_for_leaving }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                  <td colspan="5" class="text-muted text-center">لا توجد خبرات مسجلة.</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- العمود الجانبي -->
+    <div class="col-md-4">
+      <!-- الصورة -->
+      <div class="card shadow-sm mb-3">
+        <div class="card-header bg-light fw-bold">🖼️ الصورة الشخصية</div>
+        <div class="card-body text-center">
+          {% if applicant.photo %}
+            <img src="{{ applicant.photo.url }}" class="img-fluid rounded-circle shadow-sm" alt="photo" style="max-width: 200px;">
+          {% else %}
+            <div class="text-muted">لا توجد صورة</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- التواريخ -->
+      <div class="card shadow-sm">
+        <div class="card-header bg-light fw-bold">📅 التواريخ</div>
+        <div class="card-body small">
+          <div><b>تاريخ التقديم:</b> {{ applicant.submitted_at|date:"Y-m-d H:i" }}</div>
+          <div><b>الإنشاء:</b> {{ applicant.created_at|date:"Y-m-d H:i" }} {% if applicant.created_by %}بواسطة {{ applicant.created_by.get_full_name }}{% endif %}</div>
+          <div><b>آخر تعديل:</b> {{ applicant.updated_at|date:"Y-m-d H:i" }} {% if applicant.last_updated_by %}بواسطة {{ applicant.last_updated_by.get_full_name }}{% endif %}</div>
+          {% if applicant.decision_at %}
+          <div><b>القرار:</b> {{ applicant.decision_at|date:"Y-m-d H:i" }} {% if applicant.decision_by %}بواسطة {{ applicant.decision_by.get_full_name }}{% endif %}</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

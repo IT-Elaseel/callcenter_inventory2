@@ -126,7 +126,20 @@
       {% if request.user.is_authenticated %}
         {% with role=request.user.userprofile.role %}
           {% if role == "admin" %}
-               <!-- 🎛️ الكنترول-->
+                <!--   🧑‍💼 الموارد البشرية -->
+              <div class="dropdown d-inline-block">
+                <a class="dropdown-toggle btn btn-sm text-white" href="#" role="button" data-bs-toggle="dropdown">
+                  🧑‍💼 الموارد البشرية
+                </a>
+                <ul class="dropdown-menu shadow">
+                  <li><a class="dropdown-item" href="{% url 'hr:applicant_list' %}">📋 الطلبات</a></li>
+                  <li><a href="{% url 'hr:applicant_search_or_create' %}" class="btn btn-sm text-white">📝 تسجيل طلب</a></li>
+                  <li><a class="dropdown-item" href="{% url 'hr:accepted_list' %}">✅ المقبولون</a></li>
+                  <li><a class="dropdown-item" href="{% url 'hr:deleted_list' %}">🗑️ المحذوفات</a></li>
+                  <li><a class="dropdown-item" href="{% url 'hr:queue_view' %}">🎯 الدور</a></li>
+                </ul>
+              </div>
+                     <!-- 🎛️ الكنترول-->
                <div class="dropdown d-inline-block">
                  <a class="dropdown-toggle btn btn-sm text-white" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="background:rgba(255,255,255,0.15);">
                   🎛️ الكنترول
@@ -209,6 +222,18 @@
                style="background:rgba(255,255,255,0.15);">
               🎛️ كنترول الطلبات
             </a>
+            {% elif role == "hr" %}
+            <!-- 🧑‍💼 الموارد البشرية -->
+            <div class="d-flex gap-2">
+              <a href="{% url 'hr:deleted_list' %}" class="btn btn-sm btn-outline-danger">🗑️ المحذوفات</a>
+              <a href="{% url 'hr:applicant_search_or_create' %}" class="btn btn-sm btn-outline-success">📝 تسجيل طلب</a>
+              <a href="{% url 'hr:accepted_list' %}" class="btn btn-sm btn-outline-dark">✅ المقبولون</a>
+              <a href="{% url 'hr:applicant_list' %}" class="btn btn-sm btn-outline-primary">📋 الطلبات</a>
+              <a href="{% url 'hr:queue_view' %}" class="btn btn-sm btn-outline-warning">🎯 الدور</a>
+            </div>
+          {% elif role == "hr_help" %}
+            <a href="{% url 'hr:applicant_search_or_create' %}" class="btn btn-sm text-white">📝 تسجيل طلب</a>
+            <a href="{% url 'hr:queue_view' %}" class="btn btn-sm text-white">🎯 متابعة الدور</a>
           {% endif %}
         {% endwith %}
       {% endif %}

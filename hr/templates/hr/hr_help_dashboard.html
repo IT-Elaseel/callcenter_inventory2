@@ -1,0 +1,13 @@
+{% extends "orders/base.html" %}
+
+{% block title %}لوحة تحكم HR Help{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h1 class="mb-4">👩‍💼 لوحة تحكم المساعد الإداري</h1>
+  <p>أهلاً {{ request.user.username }} 👋</p>
+  <div class="alert alert-success">
+    📋 هذه الصفحة مخصصة لمساعدة قسم الموارد البشرية 👩‍💼 في متابعة الطلبات وتعديل البيانات ✏️
+  </div>
+</div>
+{% endblock %}

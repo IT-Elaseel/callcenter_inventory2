@@ -1199,25 +1199,16 @@ def manage_users(request):
         "role": role,
     })
 #-------------------------------------------------------------------------------------------------------
-from django.urls import reverse
-from urllib.parse import urlencode
-
 @login_required
 @user_passes_test(is_admin)
 def edit_category(request, pk):
     category = get_object_or_404(Category, pk=pk)
     success = False
-
-    # ✅ نحتفظ بالـ query string (عشان نرجع بنفس الفلاتر)
-    query_params = request.GET.dict()
-    query_string = f"?{urlencode(query_params)}" if query_params else ""
-
     if request.method == "POST":
         form = CategoryForm(request.POST, instance=category)
         if form.is_valid():
             form.save()
-            # ✅ بعد الحفظ رجع لنفس الصفحة مع الفلاتر
-            return redirect(reverse("view_data") + query_string)
+            success = True
     else:
         form = CategoryForm(instance=category)
 
@@ -1225,28 +1216,19 @@ def edit_category(request, pk):
         "form": form,
         "title": "✏️ تعديل قسم",
         "success": success,
-        "redirect_url": reverse("view_data") + query_string,
+        "redirect_url": "view_data",
     })
 #-------------------------------------------------------------------------------------------------------
-from django.urls import reverse
-from urllib.parse import urlencode
-
 @login_required
 @user_passes_test(is_admin)
 def edit_product(request, pk):
     product = get_object_or_404(Product, pk=pk)
     success = False
-
-    # ✅ نحتفظ بالـ query string
-    query_params = request.GET.dict()
-    query_string = f"?{urlencode(query_params)}" if query_params else ""
-
     if request.method == "POST":
         form = ProductForm(request.POST, instance=product)
         if form.is_valid():
             form.save()
-            # ✅ بعد الحفظ رجع لنفس الصفحة مع الفلاتر
-            return redirect(reverse("view_data") + query_string)
+            success = True
     else:
         form = ProductForm(instance=product)
 
@@ -1254,27 +1236,19 @@ def edit_product(request, pk):
         "form": form,
         "title": "✏️ تعديل منتج",
         "success": success,
-        "redirect_url": reverse("view_data") + query_string,
+        "redirect_url": "view_data",
     })
 #-------------------------------------------------------------------------------------------------------
-from django.urls import reverse
-from urllib.parse import urlencode
-
 @login_required
 @user_passes_test(is_admin)
 def edit_branch(request, pk):
     branch = get_object_or_404(Branch, pk=pk)
     success = False
-
-    query_params = request.GET.dict()
-    query_string = f"?{urlencode(query_params)}" if query_params else ""
-
     if request.method == "POST":
         form = BranchForm(request.POST, instance=branch)
         if form.is_valid():
             form.save()
-            # ✅ استخدم reverse
-            return redirect(reverse("view_data") + query_string)
+            success = True
     else:
         form = BranchForm(instance=branch)
 
@@ -1282,7 +1256,7 @@ def edit_branch(request, pk):
         "form": form,
         "title": "✏️ تعديل فرع",
         "success": success,
-        "redirect_url": reverse("view_data") + query_string,
+        "redirect_url": "view_data",
     })
 #-------------------------------------------------------------------------------------------------------
 @login_required
@@ -1482,7 +1456,7 @@ def control_requests(request):
     branch_id = request.GET.get("branch")
     start_date = request.GET.get("start_date", str(localdate()))
     end_date = request.GET.get("end_date", str(localdate()))
-    printed_filter = request.GET.get("printed", "no")
+    printed_filter = request.GET.get("printed", "all")
 
     requests_qs = DailyRequest.objects.filter(is_confirmed=True, created_at__date__range=[start_date, end_date])
 
