@@ -1515,15 +1515,68 @@ def control_requests(request):
 from django.utils import timezone
 from django.shortcuts import redirect, get_list_or_404
 from django.views.decorators.http import require_POST
-
+from django.http import JsonResponse
 @require_POST
-@user_passes_test(is_control)
 @login_required
 def mark_printed(request, order_number):
-    # جيب الطلبية كلها بنفس رقم الطلب
     requests = DailyRequest.objects.filter(order_number=order_number)
     if requests.exists():
         requests.update(is_printed=True, printed_at=timezone.now())
-    return redirect("control_requests")
-
+        return JsonResponse({"status": "ok"})
+    return JsonResponse({"status": "not_found"}, status=404)
 #-------------------------------------------------------------------------------------------------------
+from django.contrib.auth.decorators import login_required
+from django.utils.timezone import localdate
+from django.shortcuts import render
+from .models import DailyRequest
+
+@login_required
+def branch_requests(request):
+    profile = getattr(request.user, "userprofile", None)
+
+    # 🚫 لو مش فرع
+    if not profile or profile.role not in ["branch"]:
+        return render(
+            request,
+            "orders/no_permission.html",
+            {
+                "error_message": "🚫 غير مسموح لك بدخول هذه الصفحة."
+            },
+            status=403
+        )
+
+    branch = profile.branch
+    today = localdate()
+
+    start_date = request.GET.get("start_date", str(today))
+    end_date = request.GET.get("end_date", str(today))
+    printed_filter = request.GET.get("printed", "no")
+
+    # ✅ الطلبات المؤكدة الخاصة بالفرع الحالي فقط
+    requests_qs = DailyRequest.objects.filter(
+        is_confirmed=True,
+        branch=branch,
+        created_at__date__range=[start_date, end_date]
+    )
+
+    if printed_filter == "yes":
+        requests_qs = requests_qs.filter(is_printed=True)
+    elif printed_filter == "no":
+        requests_qs = requests_qs.filter(is_printed=False)
+
+    # ✅ Group by (branch, order_number, created_by)
+    grouped_requests = {}
+    for r in requests_qs.select_related("product", "created_by").order_by("order_number", "created_at"):
+        key = (branch, r.order_number, r.created_by)
+        grouped_requests.setdefault(key, []).append(r)
+
+    return render(request, "orders/branch_requests.html", {
+        "today": today,
+        "grouped_requests": grouped_requests,
+        "branches": [branch],          # mirror للكنترول بس للفرع الحالي
+        "selected_branch": branch.id,  # يتعلم في الـ select
+        "selected_start": start_date,
+        "selected_end": end_date,
+        "printed_filter": printed_filter,
+        "branch": branch,
+    })

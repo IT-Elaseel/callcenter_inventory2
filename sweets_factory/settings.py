@@ -32,6 +32,7 @@ INSTALLED_APPS = [
 
     # تطبيقاتك
     "orders",
+    "hr",
 ]
 
 # 🔹 Middleware
@@ -80,6 +81,8 @@ else:
             "PASSWORD": env("DB_PASSWORD", default=""),
             "HOST": env("DB_HOST", default="127.0.0.1"),
             "PORT": env("DB_PORT", default="5432"),
+            'APP_DIRS': True,
+            'DIRS': [BASE_DIR / "templates"],
         }
     }
 
@@ -106,14 +109,15 @@ STATICFILES_DIRS = [
     BASE_DIR / "static",   # ده اللي فيه img/ElAseel_logo_bw.png
 ]
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+
 # 🔹 ملفات الميديا (لو بتستخدمها)
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
-
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # 🔹 باسورد افتراضي (اختياري)
 DEFAULT_USER_PASSWORD = env("DEFAULT_USER_PASSWORD", default="12345678")
+# عشان يوجّهك على /login/ بدل /accounts/login/
 LOGIN_URL = '/login/'
 
 # ممكن كمان تحدد الافتراضي بعد اللوجن

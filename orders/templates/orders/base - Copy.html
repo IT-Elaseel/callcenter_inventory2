@@ -132,16 +132,23 @@
                   🧑‍💼 الموارد البشرية
                 </a>
                 <ul class="dropdown-menu shadow">
-                  <li><a class="dropdown-item" href="{% url 'hr:applicant_list' %}">📋طلبات التوظيف</a></li>
-                  <li><a href="{% url 'hr:applicant_search_or_create' %}" class="btn btn-sm text-white">📝 تسجيل طلب نوظيف</a></li>
-                  <li><a class="dropdown-item" href="{% url 'hr:accepted_list' %}">✅ تم القبول</a></li>
+                  <li><a class="dropdown-item" href="{% url 'hr:applicant_list' %}">📋 الطلبات</a></li>
+                  <li><a href="{% url 'hr:applicant_search_or_create' %}" class="btn btn-sm text-white">📝 تسجيل طلب</a></li>
+                  <li><a class="dropdown-item" href="{% url 'hr:accepted_list' %}">✅ المقبولون</a></li>
                   <li><a class="dropdown-item" href="{% url 'hr:deleted_list' %}">🗑️ المحذوفات</a></li>
                   <li><a class="dropdown-item" href="{% url 'hr:queue_view' %}">🎯 الدور</a></li>
                 </ul>
               </div>
                      <!-- 🎛️ الكنترول-->
-                <a href="{% url 'control_requests' %}" class="btn btn-sm text-white" style="background:rgba(255,255,255,0.15);">🎛️الكنترول</a>
-
+               <div class="dropdown d-inline-block">
+                 <a class="dropdown-toggle btn btn-sm text-white" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="background:rgba(255,255,255,0.15);">
+                  🎛️ الكنترول
+                 </a>
+                 <ul class="dropdown-menu shadow">
+                   <li><a class="dropdown-item" href="{% url 'add_daily_request' %}">📝 مطلوب الفروع</a></li>
+                   <li><a class="dropdown-item" href="{% url 'control_requests' %}">🎛️شغل الفروع</a></li>
+                 </ul>
+               </div>
             <!-- 📦 المخزون -->
             <div class="dropdown d-inline-block">
               <a class="dropdown-toggle btn btn-sm text-white" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="background:rgba(255,255,255,0.15);">
@@ -179,8 +186,8 @@
               </a>
               <ul class="dropdown-menu shadow">
                 <li><a class="dropdown-item" href="/admin/">لوحة Django</a></li>
-                <li><a class="dropdown-item" href="{% url 'manage_data' %}">🛠️ إضافه منتج / قسم / فرع</a></li>
-                <li><a class="dropdown-item" href="{% url 'view_data' %}">📊 عرض وتعديل منتج / قسم / فرع</a></li>
+                <li><a class="dropdown-item" href="{% url 'manage_data' %}">🛠️ إدارة البيانات</a></li>
+                <li><a class="dropdown-item" href="{% url 'view_data' %}">📊 عرض البيانات</a></li>
               </ul>
             </div>
               <!-- 🧑‍💼 المستخدمين -->
@@ -189,7 +196,7 @@
                 🧑‍💼 المستخدمين
               </a>
               <ul class="dropdown-menu shadow">
-                <li><a class="dropdown-item" href="{% url 'manage_users' %}">🧑‍🤝‍🧑 حذف وتعديل مستخدم</a></li>
+                <li><a class="dropdown-item" href="{% url 'manage_users' %}">🧑‍🤝‍🧑 إدارة المستخدمين</a></li>
                 <li><a class="dropdown-item" href="{% url 'add_user' %}">🧑➕ إضافة مستخدم</a></li>
               </ul>
             </div>
@@ -203,15 +210,18 @@
 
           {% elif role == "branch" %}
             <a href="{% url 'reservations_list' %}" class="btn btn-sm text-white">📑 الحجوزات</a>
-            <a href="{% url 'branch_requests' %}" class="btn btn-sm text-white">📋 طلباتى</a>
             <a href="/inventory/transactions/" class="btn btn-sm text-white">📜 سجل عمليات المخزون</a>
             <a href="{% url 'branch_inventory' %}" class="btn btn-sm text-white">📦 المخزون</a>
             <a href="/inventory/update/" class="btn btn-sm text-white">📦 تحديث المخزون</a>
-            <a href="{% url 'add_daily_request' %}" class="btn btn-sm text-white">📝 إنشاء طلبية</a>
+            <a href="{% url 'add_daily_request' %}" class="btn btn-sm text-white">📝 الطلب اليومي</a>
             <a href="/" class="btn btn-sm text-white">🏠 الرئيسية</a>
           {% elif role == "admin" or role == "control" %}
             <!-- 🎛️ كنترول الطلبات -->
-            <a href="{% url 'control_requests' %}"class="btn btn-sm text-white"style="background:rgba(255,255,255,0.15);">🎛️الكنترول</a>
+            <a href="{% url 'control_requests' %}"
+               class="btn btn-sm text-white"
+               style="background:rgba(255,255,255,0.15);">
+              🎛️ كنترول الطلبات
+            </a>
             {% elif role == "hr" %}
             <!-- 🧑‍💼 الموارد البشرية -->
             <div class="d-flex gap-2">
