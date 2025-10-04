@@ -76,4 +76,63 @@
     </table>
   </div>
 </div>
+<script>
+const hrSocket = new WebSocket(
+  (window.location.protocol === "https:" ? "wss://" : "ws://") +
+  window.location.host +
+  "/ws/hr/applicants/"
+);
+
+hrSocket.onopen = () => console.log("✅ Connected to HR Applicants WS");
+
+hrSocket.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log("🧾 Applicant update:", data);
+
+  const tbody = document.querySelector("table tbody");
+  if (!tbody) return;
+
+  // ✅ إنشاء صف جديد وإضافته في أعلى الجدول
+  const newRow = document.createElement("tr");
+  newRow.innerHTML = `
+    <td class="fw-bold">#${data.order_number}</td>
+    <td>${data.full_name}</td>
+    <td>${data.phone || '-'}</td>
+    <td><span class="badge bg-secondary">${data.status}</span></td>
+    <td>${data.submitted_at}</td>
+    <td>
+      <div class="btn-group">
+        <a href="${data.detail_url}" class="btn btn-sm btn-outline-primary">عرض</a>
+        <a href="${data.edit_url}" class="btn btn-sm btn-outline-warning">تعديل</a>
+        <a href="${data.excel_url}" class="btn btn-sm btn-outline-success">إكسل</a>
+        <a href="${data.decision_url}" class="btn btn-sm btn-outline-dark">قرار</a>
+        <a href="${data.delete_url}" class="btn btn-sm btn-outline-danger">حذف</a>
+      </div>
+    </td>
+  `;
+
+  tbody.prepend(newRow);
+  showToast(data.message);
+};
+
+// ✅ إشعار مؤقت
+function showToast(message) {
+  const toast = document.createElement("div");
+  toast.textContent = message;
+  toast.style.cssText = `
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: #007bff;
+    color: #fff;
+    padding: 10px 15px;
+    border-radius: 6px;
+    box-shadow: 0 0 5px rgba(0,0,0,0.3);
+    z-index: 9999;
+    font-size: 14px;
+  `;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+</script>
 {% endblock %}

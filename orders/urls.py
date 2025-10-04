@@ -32,6 +32,7 @@ urlpatterns = [
     path("view-data/", views.view_data, name="view_data"),
     path("daily-request/", views.add_daily_request, name="add_daily_request"),
     path("control-requests/", views.control_requests, name="control_requests"),
+    path("control-requests/data", views.control_requests_data, name="control_requests_data"),  # ✅ ده الجديد
     path("branch/requests/", views.branch_requests, name="branch_requests"),
     path("mark-printed/<str:order_number>/", views.mark_printed, name="mark_printed"),
 

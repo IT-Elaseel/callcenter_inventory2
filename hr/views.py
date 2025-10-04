@@ -53,6 +53,9 @@ def _diff_changes(instance, old_data: dict, fields):
 # ------------------------------------------------------------------------------
 # 1) إنشاء طلب جديد (HR_HELP فقط)
 # ------------------------------------------------------------------------------
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+from django.urls import reverse
 @login_required
 @user_passes_test(is_admin_or_hr_or_hr_help)
 @transaction.atomic
@@ -71,9 +74,28 @@ def applicant_create(request):
             applicant.created_by = request.user
             applicant.last_updated_by = request.user
             applicant.save()
-
+            applicant = form.save()
             formset.instance = applicant
             formset.save()
+            # ... داخل الدالة بعد حفظ applicant مباشرة
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                "hr_applicants",
+                {
+                    "type": "hr_applicant_update",
+                    "order_number": applicant.order_number,
+                    "full_name": applicant.full_name,
+                    "phone": applicant.phone,
+                    "status": applicant.get_status_display(),
+                    "submitted_at": applicant.submitted_at.strftime("%Y-%m-%d %H:%M"),
+                    "detail_url": reverse("hr:applicant_detail", args=[applicant.order_number]),
+                    "edit_url": reverse("hr:applicant_edit", args=[applicant.order_number]),
+                    "excel_url": reverse("hr:export_applicant_excel", args=[applicant.order_number]),
+                    "delete_url": reverse("hr:applicant_delete", args=[applicant.order_number]),
+                    "decision_url": reverse("hr:applicant_decision", args=[applicant.order_number]),
+                    "message": f"✅ تم تسجيل طلب جديد: {applicant.full_name}",
+                }
+            )
 
             _log_history(applicant, request.user, "create", changes="إنشاء طلب جديد")
 

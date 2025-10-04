@@ -1,23 +1,36 @@
+# ==============================
+# Base image
+# ==============================
 FROM python:3.11-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
-
-# لو هتستخدم Postgres نثبت أدوات البناء والـ libpq
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential libpq-dev \
- && rm -rf /var/lib/apt/lists/*
-
+# ==============================
+# Set working directory
+# ==============================
 WORKDIR /app
 
-COPY requirements.txt /app/
+# ==============================
+# Install dependencies
+# ==============================
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . /app/
+# ==============================
+# Copy project files
+# ==============================
+COPY . .
 
-# خلي سكريبت الـ entrypoint قابل للتنفيذ
-RUN chmod +x /app/entrypoint.sh
+# ==============================
+# Set environment variables
+# ==============================
+ENV PYTHONUNBUFFERED=1
+ENV DJANGO_SETTINGS_MODULE=sweets_factory.settings
 
+# ==============================
+# Expose port
+# ==============================
 EXPOSE 8000
 
-ENTRYPOINT ["./entrypoint.sh"]
+# ==============================
+# Run Daphne server (Channels)
+# ==============================
+CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "sweets_factory.asgi:application"]

@@ -138,18 +138,6 @@ def home(request):
                 # خصم الكمية
                 inventory.quantity -= 1
                 inventory.save()
-                channel_layer = get_channel_layer()
-                async_to_sync(channel_layer.group_send)(
-                    "callcenter_updates",
-                    {
-                        "type": "callcenter_update",
-                        "product_id": product.id,
-                        "branch_id": branch.id,
-                        "branch_name": branch.name,
-                        "new_qty": inventory.quantity,
-                        "message": f"📦 تم تحديث {product.name} في فرع {branch.name} إلى {inventory.quantity}",
-                    }
-                )
 
                 messages.success(request, f"تم حجز {product.name} للعميل {customer.name}")
             else:
@@ -506,19 +494,7 @@ def callcenter_dashboard(request):
                 )
                 inventory.quantity -= qty
                 inventory.save()
-                channel_layer = get_channel_layer()
-                async_to_sync(channel_layer.group_send)(
-                    "callcenter_updates",
-                    {
-                        "type": "callcenter_update",
-                        "product_id": product.id,
-                        "branch_id": branch.id,
-                        "branch_name": branch.name,
-                        "new_qty": inventory.quantity,
-                        "message": f"📦 تم تحديث {product.name} في فرع {branch.name} إلى {inventory.quantity}",
-                    }
-                )
-                                #return redirect("callcenter_dashboard")
+                return redirect("callcenter_dashboard")
             else:
                 # ❌ خطأ الكمية
                 categories = Category.objects.all()
@@ -781,8 +757,6 @@ def landing(request):
 
     return render(request, "orders/landing.html", {"form": form})
 #-------------------------------------------------------------------------------------------------------
-from channels.layers import get_channel_layer
-from asgiref.sync import async_to_sync
 @login_required
 @role_required(["branch"])
 def update_inventory(request):
@@ -815,18 +789,7 @@ def update_inventory(request):
             inventory, created = Inventory.objects.get_or_create(branch=branch, product=product)
             inventory.quantity = qty
             inventory.save()
-            channel_layer = get_channel_layer()
-            async_to_sync(channel_layer.group_send)(
-                "callcenter_updates",
-                {
-                    "type": "callcenter_update",
-                    "product_id": product.id,
-                    "branch_id": branch.id,
-                    "branch_name": branch.name,
-                    "new_qty": inventory.quantity,
-                    "message": f"📦 تم تحديث {product.name} في فرع {branch.name} إلى {inventory.quantity}",
-                }
-            )
+
             InventoryTransaction.objects.create(
                 product=product,
                 from_branch=None,
@@ -1096,18 +1059,6 @@ def resolve_conflict(request):
                     )
                     inventory.quantity -= qty
                     inventory.save()
-                    channel_layer = get_channel_layer()
-                    async_to_sync(channel_layer.group_send)(
-                        "callcenter_updates",
-                        {
-                            "type": "callcenter_update",
-                            "product_id": product.id,
-                            "branch_id": branch.id,
-                            "branch_name": branch.name,
-                            "new_qty": inventory.quantity,
-                            "message": f"📦 تم تحديث {product.name} في فرع {branch.name} إلى {inventory.quantity}",
-                        }
-                    )
 
                     messages.success(
                         request,

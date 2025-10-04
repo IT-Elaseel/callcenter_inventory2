@@ -1,16 +1,18 @@
-"""
-ASGI config for sweets_factory project.
-
-It exposes the ASGI callable as a module-level variable named ``application``.
-
-For more information on this file, see
-https://docs.djangoproject.com/en/5.2/howto/deployment/asgi/
-"""
-
 import os
-
+from channels.routing import ProtocolTypeRouter, URLRouter
 from django.core.asgi import get_asgi_application
+from channels.auth import AuthMiddlewareStack
+import orders.routing
+import hr.routing  # ✅ أضف ده
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'sweets_factory.settings')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "sweets_factory.settings")
 
-application = get_asgi_application()
+application = ProtocolTypeRouter({
+    "http": get_asgi_application(),
+    "websocket": AuthMiddlewareStack(
+        URLRouter(
+            orders.routing.websocket_urlpatterns +
+            hr.routing.websocket_urlpatterns  # ✅ ضيفها هنا
+        )
+    ),
+})

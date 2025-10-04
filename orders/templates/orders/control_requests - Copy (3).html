@@ -2,7 +2,7 @@
 {% load static %}
 <script>
   // الأبيض × أسود (الموصى به للطابعة الحرارية)
-  const LOGO_URL = "{{ request.scheme }}://{{ request.get_host }}{% static 'img/ElAseel_logo_bw.png' %}";
+  const LOGO_URL = "{% static 'img/ElAseel_logo_bw.png' %}";
   // لو حبيت الرمادي بدلاً منها:
   // const LOGO_URL = "{% static 'img/ElAseel_logo_gray.png' %}";
 </script>
@@ -46,9 +46,59 @@
   </form>
 
   <!-- ✅ الطلبات -->
-  <div id="requests-container">
-    {% include "orders/_requests_list.html" %}
-  </div>
+  {% for key, requests in grouped_requests.items %}
+    {% with branch=key.0 order_number=key.1 user=key.2 %}
+    <div class="card my-4 request-block {% if requests.0.is_printed %}bg-light{% endif %}" id="request-{{ order_number }}">
+      <!-- الهيدر -->
+      <div class="card-header d-flex justify-content-between align-items-center"
+           style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#collapse-{{ order_number }}">
+        <h4 class="m-0">🏪 {{ branch.name }} - طلبية رقم #{{ order_number }}</h4>
+        <div>
+          <small>بواسطة: {{ user.username }}</small><br>
+          <small>⏰ وقت الإرسال: {{ requests.0.confirmed_at|date:"Y-m-d H:i:s" }}</small><br>
+          {% if requests.0.is_printed %}
+            <span class="badge bg-success">✅ تمت الطباعة ({{ requests.0.printed_at|date:"Y-m-d H:i:s" }})</span>
+          {% else %}
+            <span class="badge bg-warning text-dark">🕗 لم تُطبع</span>
+          {% endif %}
+        </div>
+        <div>
+          <button onclick="printOrder('{{ order_number }}')" class="btn btn-primary btn-sm">🖨️ طباعة</button>
+        </div>
+      </div>
+
+      <!-- البودي (مخفي افتراضيًا) -->
+      <div id="collapse-{{ order_number }}" class="collapse">
+        <div class="card-body">
+          <table class="table table-bordered text-center">
+            <thead class="table-dark">
+              <tr>
+                <th>المنتج</th>
+                <th>الكمية</th>
+                <th>الوحدة</th>
+                <th>الوقت</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in requests %}
+                <tr>
+                  <td>{{ r.product.name }}</td>
+                  <td>{{ r.quantity }}</td>
+                  <td>{{ r.product.get_unit_display }}</td>
+                  <td>{{ r.created_at|date:"H:i" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endwith %}
+  {% empty %}
+    <p class="text-center">🚫 لا يوجد طلبات</p>
+  {% endfor %}
+</div>
+
 <!-- 🎨 ستايلات الطباعة -->
 <style>
   @media print {
@@ -86,7 +136,7 @@
     w.document.write('<div class="receipt">');
 
     // ✅ اللوجو
-    w.document.write('<div class="logo-wrap"><img src="{{ request.scheme }}://{{ request.get_host }}{% static "img/ElAseel_logo_bw.png" %}" alt="Logo"></div>');
+    w.document.write('<div class="logo-wrap"><img src="/static/img/ElAseel_logo_bw.png" alt="Logo"></div>');
 
     // ✅ Header
     const now = new Date();
@@ -137,59 +187,38 @@
     }
     return cookieValue;
   }
-  // ========================================================
-  // 🔌 WebSocket live updates  (نسخة نظيفة بدون تكرار)
-  // ========================================================
-  const socket = new WebSocket(
-    (window.location.protocol === "https:" ? "wss://" : "ws://") +
-    window.location.host +
-    "/ws/control/"
-  );
-
-  socket.onopen = () => console.log("✅ WebSocket connected");
-
-  socket.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    console.log("📩 New update:", data);
-
-    if (["printed", "new"].includes(data.action)) {
-      showToast(data.message, "info");
-      refreshRequests(); // تحديث القائمة بدون Reload
+// دالة تجيب CSRF من الكوكيز
+function getCookie(name) {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== "") {
+    const cookies = document.cookie.split(";");
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.substring(0, name.length + 1) === (name + "=")) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
     }
-  };
-
-  socket.onclose = () => console.warn("⚠️ WebSocket closed");
-
-  // Toast بسيط
-  function showToast(message, type) {
-    const color = type === "success" ? "#28a745" : "#007bff";
-    const toast = document.createElement("div");
-    toast.textContent = message;
-    toast.style.cssText = `
-      position: fixed; bottom: 20px; right: 20px;
-      background: ${color}; color: white;
-      padding: 10px 15px; border-radius: 6px;
-      box-shadow: 0 0 5px rgba(0,0,0,0.3);
-      z-index: 9999; font-size: 14px;
-    `;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 3000);
   }
+  return cookieValue;
+}
 
-  // جلب HTML الطلبات فقط
-  function refreshRequests() {
-    const params = new URLSearchParams({
-      start_date: document.querySelector("[name='start_date']").value,
-      end_date: document.querySelector("[name='end_date']").value,
-      branch: document.querySelector("[name='branch']").value,
-      printed: document.querySelector("[name='printed']").value
-    });
-    fetch("/control-requests/data?" + params.toString())
-      .then(r => r.json())
-      .then(data => {
-        document.getElementById("requests-container").innerHTML = data.html;
-      });
+//-------------------------------------------------------------------------------------------------------
+// دالة تجيب CSRF من الكوكيز
+function getCookie(name) {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== "") {
+    const cookies = document.cookie.split(";");
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.substring(0, name.length + 1) === (name + "=")) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
   }
-  </script>
+  return cookieValue;
+}
+</script>
 
 {% endblock %}

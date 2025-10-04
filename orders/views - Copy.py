@@ -138,18 +138,6 @@ def home(request):
                 # خصم الكمية
                 inventory.quantity -= 1
                 inventory.save()
-                channel_layer = get_channel_layer()
-                async_to_sync(channel_layer.group_send)(
-                    "callcenter_updates",
-                    {
-                        "type": "callcenter_update",
-                        "product_id": product.id,
-                        "branch_id": branch.id,
-                        "branch_name": branch.name,
-                        "new_qty": inventory.quantity,
-                        "message": f"📦 تم تحديث {product.name} في فرع {branch.name} إلى {inventory.quantity}",
-                    }
-                )
 
                 messages.success(request, f"تم حجز {product.name} للعميل {customer.name}")
             else:
@@ -506,19 +494,7 @@ def callcenter_dashboard(request):
                 )
                 inventory.quantity -= qty
                 inventory.save()
-                channel_layer = get_channel_layer()
-                async_to_sync(channel_layer.group_send)(
-                    "callcenter_updates",
-                    {
-                        "type": "callcenter_update",
-                        "product_id": product.id,
-                        "branch_id": branch.id,
-                        "branch_name": branch.name,
-                        "new_qty": inventory.quantity,
-                        "message": f"📦 تم تحديث {product.name} في فرع {branch.name} إلى {inventory.quantity}",
-                    }
-                )
-                                #return redirect("callcenter_dashboard")
+                return redirect("callcenter_dashboard")
             else:
                 # ❌ خطأ الكمية
                 categories = Category.objects.all()
@@ -781,8 +757,6 @@ def landing(request):
 
     return render(request, "orders/landing.html", {"form": form})
 #-------------------------------------------------------------------------------------------------------
-from channels.layers import get_channel_layer
-from asgiref.sync import async_to_sync
 @login_required
 @role_required(["branch"])
 def update_inventory(request):
@@ -815,18 +789,7 @@ def update_inventory(request):
             inventory, created = Inventory.objects.get_or_create(branch=branch, product=product)
             inventory.quantity = qty
             inventory.save()
-            channel_layer = get_channel_layer()
-            async_to_sync(channel_layer.group_send)(
-                "callcenter_updates",
-                {
-                    "type": "callcenter_update",
-                    "product_id": product.id,
-                    "branch_id": branch.id,
-                    "branch_name": branch.name,
-                    "new_qty": inventory.quantity,
-                    "message": f"📦 تم تحديث {product.name} في فرع {branch.name} إلى {inventory.quantity}",
-                }
-            )
+
             InventoryTransaction.objects.create(
                 product=product,
                 from_branch=None,
@@ -1096,18 +1059,6 @@ def resolve_conflict(request):
                     )
                     inventory.quantity -= qty
                     inventory.save()
-                    channel_layer = get_channel_layer()
-                    async_to_sync(channel_layer.group_send)(
-                        "callcenter_updates",
-                        {
-                            "type": "callcenter_update",
-                            "product_id": product.id,
-                            "branch_id": branch.id,
-                            "branch_name": branch.name,
-                            "new_qty": inventory.quantity,
-                            "message": f"📦 تم تحديث {product.name} في فرع {branch.name} إلى {inventory.quantity}",
-                        }
-                    )
 
                     messages.success(
                         request,
@@ -1379,8 +1330,6 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect
 from django.utils import timezone
 from .models import DailyRequest, Product, OrderCounter
-from channels.layers import get_channel_layer
-from asgiref.sync import async_to_sync
 @login_required
 def add_daily_request(request):
     profile2 = getattr(request.user, "userprofile", None)
@@ -1485,24 +1434,10 @@ def add_daily_request(request):
                 is_confirmed=True,
                 confirmed_at=now
             )
-
-            # 🧩 إرسال تحديث لحظي للكنترول
-            layer = get_channel_layer()
-            async_to_sync(layer.group_send)(
-                "control_updates",
-                {
-                    "type": "control_update",
-                    "action": "new",
-                    "message": f"🆕 طلبية جديدة من فرع {branch.name}",
-                    "order_number": order_number,
-                }
-            )
-
             # 🧹 امسح رقم الطلبية و القسم بعد التأكيد
             request.session["current_order_number"] = None
             request.session["selected_category"] = None
             return redirect("add_daily_request")
-
 
     # البيانات للـ HTML
     products = Product.objects.all()
@@ -1576,71 +1511,19 @@ def control_requests(request):
         "selected_branch": branch_id,
         "printed_filter": printed_filter,
     })
-#-------------------------sockets-------------------------------------------------------------------------
-from django.http import JsonResponse
-from django.template.loader import render_to_string
-
-@login_required
-def control_requests_data(request):
-    """ترجع HTML الطلبات فقط لتحديث الصفحة عبر AJAX"""
-    today = timezone.now().date()
-    branch_id = request.GET.get("branch")
-    start_date = request.GET.get("start_date", str(localdate()))
-    end_date = request.GET.get("end_date", str(localdate()))
-    printed_filter = request.GET.get("printed", "no")
-
-    requests_qs = DailyRequest.objects.filter(is_confirmed=True, created_at__date__range=[start_date, end_date])
-
-    if branch_id:
-        requests_qs = requests_qs.filter(branch_id=branch_id)
-
-    if printed_filter == "yes":
-        requests_qs = requests_qs.filter(is_printed=True)
-    elif printed_filter == "no":
-        requests_qs = requests_qs.filter(is_printed=False)
-
-    grouped_requests = {}
-    for r in requests_qs.select_related("branch", "product", "created_by").order_by("order_number", "created_at"):
-        key = (r.branch, r.order_number, r.created_by)
-        grouped_requests.setdefault(key, []).append(r)
-
-    html = render_to_string("orders/_requests_list.html", {
-        "grouped_requests": grouped_requests,
-        "today": today,
-    }, request=request)
-
-    return JsonResponse({"html": html})
 #-------------------------------------------------------------------------------------------------------
 from django.utils import timezone
-from django.shortcuts import redirect
+from django.shortcuts import redirect, get_list_or_404
 from django.views.decorators.http import require_POST
 from django.http import JsonResponse
-from channels.layers import get_channel_layer
-from asgiref.sync import async_to_sync
-
 @require_POST
 @login_required
 def mark_printed(request, order_number):
     requests = DailyRequest.objects.filter(order_number=order_number)
-    if not requests.exists():
-        return JsonResponse({"status": "not_found"}, status=404)
-
-    # ✅ تحديث الحالة
-    requests.update(is_printed=True, printed_at=timezone.now())
-
-    # ✅ إرسال تحديث للسوكيت
-    layer = get_channel_layer()
-    async_to_sync(layer.group_send)(
-        "control_updates",
-        {
-            "type": "control_update",
-            "action": "printed",
-            "message": f"طلبية رقم {order_number} تم تعليمها مطبوعة ✅",
-            "order_number": order_number,
-        }
-    )
-
-    return JsonResponse({"status": "ok"})
+    if requests.exists():
+        requests.update(is_printed=True, printed_at=timezone.now())
+        return JsonResponse({"status": "ok"})
+    return JsonResponse({"status": "not_found"}, status=404)
 #-------------------------------------------------------------------------------------------------------
 from django.contrib.auth.decorators import login_required
 from django.utils.timezone import localdate
