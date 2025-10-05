@@ -3,12 +3,11 @@ from . import views
 
 urlpatterns = [
     path("", views.landing, name="landing"),       # الصفحة الرئيسية الجديدة
-    path("dashboard/", views.root_redirect, name="home"),   # الداشبورد القديمة
     path("reservations/", views.reservations_list, name="reservations_list"),
     path("reservations/<int:res_id>/<str:status>/", views.update_reservation_status, name="update_reservation_status"),
     path("reports/", views.reports, name="reports"),
     path("reports/export/excel/", views.export_reports_excel, name="export_reports_excel"),
-    path("callcenter/", views.callcenter_dashboard, name="callcenter_dashboard"),
+    path("callcenter/", views.callcenter, name="callcenter"),
     path("branch/", views.branch_dashboard, name="branch_dashboard"),
     path("login/", views.landing, name="login"),
     path("logout/", views.logout_view, name="logout"),

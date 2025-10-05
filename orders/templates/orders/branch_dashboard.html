@@ -191,4 +191,61 @@
   box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }
 </style>
+<script>
+const branchSocket = new WebSocket(
+  (window.location.protocol === "https:" ? "wss://" : "ws://") +
+  window.location.host +
+  "/ws/branch/"
+);
+
+branchSocket.onopen = () => console.log("🏬 Connected to Branch WS");
+
+branchSocket.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log("📩 New branch update:", data);
+
+  // عرض Toast بسيط
+  showToast(data.message, "success");
+
+  // ✅ أضف صف جديد في الجدول لو في حجز جديد
+  if (data.reservation_id) {
+    const tbody = document.querySelector(".styled-table tbody");
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${data.reservation_id}</td>
+      <td>${data.customer_name || "-"}</td>
+      <td>${data.customer_phone || "-"}</td>
+      <td>${data.product_name}</td>
+      <td>${data.quantity}</td>
+      <td>معلق</td>
+      <td>${data.created_at}</td>
+      <td>-</td>
+      <td>-</td>
+      <td>${data.reserved_by || "-"}</td>
+      <td>
+        <a href="/reservations/${data.reservation_id}/confirmed/" class="custom-btn btn-success btn-sm">✅ تأكيد</a>
+        <a href="/reservations/${data.reservation_id}/cancelled/" class="custom-btn btn-danger btn-sm">❌ إلغاء</a>
+      </td>
+    `;
+    tbody.prepend(row); // أضفها في أول الجدول
+  }
+};
+
+branchSocket.onclose = () => console.warn("⚠️ Branch WS closed");
+
+function showToast(message, type) {
+  const color = type === "success" ? "#28a745" : "#007bff";
+  const toast = document.createElement("div");
+  toast.textContent = message;
+  toast.style.cssText = `
+    position: fixed; bottom: 20px; left: 20px;
+    background: ${color}; color: white;
+    padding: 10px 15px; border-radius: 6px;
+    box-shadow: 0 0 5px rgba(0,0,0,0.3);
+    z-index: 9999; font-size: 14px;
+  `;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+</script>
 {% endblock %}

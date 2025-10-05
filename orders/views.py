@@ -1,4 +1,4 @@
-# 📌 Python Standard Library
+ # 📌 Python Standard Library
 from datetime import datetime
 # 📌 Third-party Libraries
 import openpyxl
@@ -63,118 +63,177 @@ def export_reservations_excel(request, branch_id):
     response["Content-Disposition"] = f'attachment; filename="reservations_branch_{branch_id}.xlsx"'
     wb.save(response)
     return response
+#-------------------------------------------------------------------------------------------------------
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+
+def broadcast_new_reservation(reservation, qty=1, user=None):
+    """دالة موحدة لبث الحجز الجديد لجميع الفروع"""
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        "branch_updates",
+        {
+            "type": "branch_update",
+            "message": f"🆕 حجز جديد في فرع {reservation.branch.name} ({reservation.product.name} × {qty})",
+            "reservation_id": reservation.id,
+            "product_name": reservation.product.name,
+            "quantity": qty,
+            "customer_name": reservation.customer.name if reservation.customer else "-",
+            "customer_phone": reservation.customer.phone if reservation.customer and reservation.customer.phone else "-",
+            "created_at": str(reservation.created_at.strftime("%Y-%m-%d %H:%M:%S")),
+            "reserved_by": user.username if user else "-",
+        }
+    )
 #-------------------------------------------------------------
-def home(request):
+from django.db import transaction
+from django.http import JsonResponse
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render
+from django.contrib import messages
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+from .models import Product, Branch, Category, Inventory, Reservation, Customer
+
+@login_required
+def callcenter(request):
     query = request.GET.get("q")
-    inventories = Inventory.objects.select_related("branch", "product", "product__category")
+    category_id = request.GET.get("category")
+
+    inventories = Inventory.objects.select_related("product", "branch", "product__category")
+    categories = Category.objects.all()
 
     if query:
         inventories = inventories.filter(product__name__icontains=query)
+    if category_id:
+        inventories = inventories.filter(product__category_id=category_id)
 
-    # Handle Reservation
+    # معالجة POST (يُتوقع AJAX أو POST عادي)
     if request.method == "POST":
-        customer_name = request.POST.get("customer_name")
-        customer_phone = request.POST.get("customer_phone")
-        delivery_type = request.POST.get("delivery_type")
-        product_id = request.POST.get("product_id")
-        branch_id = request.POST.get("branch_id")
-
-        # ✅ التشيك على رقم الموبايل (لو مكتوب)
-        if customer_phone:
-            if not customer_phone.isdigit() or len(customer_phone) != 11:
-                messages.error(request, "❌ رقم الموبايل لازم يكون 11 رقم صحيح أو اتركه فارغ.")
-                return redirect("home")
-        else:
-            customer_phone = None
-
-
-        product = Product.objects.get(id=product_id)
-        branch = Branch.objects.get(id=branch_id)
-
-        # ✅ منطق العميل الجديد
-        if customer_phone:
-            existing_customers = Customer.objects.filter(phone=customer_phone)
-        else:
-            existing_customers = Customer.objects.none()
-
-
-        if not existing_customers.exists():
-            customer = Customer.objects.create(name=customer_name, phone=customer_phone)
-
-        elif existing_customers.count() > 1:
-            messages.warning(
-                request,
-                f"⚠️ الرقم {customer_phone} مرتبط بأكثر من عميل، من فضلك اختر من العملاء أو أنشئ عميل جديد."
-            )
-            return redirect("customers_list")
-
-        else:
-            existing_customer = existing_customers.first()
-            if existing_customer.name == customer_name:
-                customer = existing_customer
-            else:
-                messages.warning(
-                    request,
-                    f"⚠️ الرقم {customer_phone} موجود باسم {existing_customer.name}. "
-                    f"هل تود استخدامه أم إنشاء عميل جديد؟"
-                )
-                return redirect("customers_list")
-
         try:
-            inventory = Inventory.objects.get(product=product, branch=branch)
+            product_id = request.POST.get("product_id")
+            branch_id = request.POST.get("branch_id")
+            customer_name = (request.POST.get("customer_name") or "").strip()
+            customer_phone = (request.POST.get("customer_phone") or "").strip()
+            delivery_type = request.POST.get("delivery_type")
+            try:
+                qty = int(request.POST.get("quantity", 1))
+            except (TypeError, ValueError):
+                qty = 1
 
-            if inventory.quantity > 0:
-                # ✅ إنشاء الحجز بالطريقة الصحيحة
-                Reservation.objects.create(
+            # تحقق أساسي من وجود المنتج والفرع
+            try:
+                product = Product.objects.get(id=product_id)
+                branch = Branch.objects.get(id=branch_id)
+            except (Product.DoesNotExist, Branch.DoesNotExist):
+                return JsonResponse({"success": False, "message": "❌ المنتج أو الفرع غير موجود."}, status=400)
+
+            if qty < 1:
+                return JsonResponse({"success": False, "message": "❌ الكمية لازم تكون رقم موجب."}, status=400)
+
+            # معاملة لضمان سلامة التحديث على المخزون
+            with transaction.atomic():
+                inventory = Inventory.objects.select_for_update().get(product=product, branch=branch)
+
+                if inventory.quantity < qty:
+                    return JsonResponse({"success": False, "message": f"❌ الكمية المطلوبة غير متوفرة (المتاح {inventory.quantity})."}, status=400)
+
+                # **هنا المهم**: لا نبحث عن عميل حسب الهاتف.
+                # إذا دخلت اسم أو رقم → نُنشئ سجل عميل جديد. لو لم تدخل أى بيانات → نترك customer = None
+                customer = None
+                if customer_name or customer_phone:
+                    customer = Customer.objects.create(
+                        name=customer_name if customer_name else "عميل مؤقت",
+                        phone=customer_phone if customer_phone else ""
+                    )
+
+                reservation = Reservation.objects.create(
                     customer=customer,
                     product=product,
                     branch=branch,
-                    delivery_type=delivery_type,
+                    delivery_type=delivery_type if delivery_type else "pickup",
                     status="pending",
-                     quantity=qty,
+                    quantity=qty,
                     reserved_by=request.user if request.user.is_authenticated else None,
                 )
 
-                # خصم الكمية
-                inventory.quantity -= 1
+                # خصم الكمية وحفظ
+                inventory.quantity -= qty
                 inventory.save()
-                channel_layer = get_channel_layer()
-                async_to_sync(channel_layer.group_send)(
-                    "callcenter_updates",
-                    {
-                        "type": "callcenter_update",
-                        "product_id": product.id,
-                        "branch_id": branch.id,
-                        "branch_name": branch.name,
-                        "new_qty": inventory.quantity,
-                        "message": f"📦 تم تحديث {product.name} في فرع {branch.name} إلى {inventory.quantity}",
-                    }
-                )
 
-                messages.success(request, f"تم حجز {product.name} للعميل {customer.name}")
-            else:
-                messages.error(request, f"المنتج {product.name} غير متوفر في الفرع {branch.name}")
+            # إرسال تحديثات WebSocket
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                "callcenter_updates",
+                {
+                    "type": "callcenter_update",
+                    "product_id": product.id,
+                    "branch_id": branch.id,
+                    "branch_name": branch.name,
+                    "new_qty": inventory.quantity,
+                    "message": f"📦 تم تحديث {product.name} في فرع {branch.name} إلى {inventory.quantity}",
+                },
+            )
+
+            async_to_sync(channel_layer.group_send)(
+                "branch_updates",
+                {
+                    "type": "branch_update",
+                    "message": f"🆕 حجز جديد ({product.name} × {qty})",
+                    "reservation_id": reservation.id,
+                    "product_name": product.name,
+                    "quantity": qty,
+                    "customer_name": customer.name if customer else "-",
+                    "customer_phone": customer.phone if customer else "-",
+                    "created_at": timezone.localtime(reservation.created_at).strftime('%Y-%m-%d %H:%M:%S'),
+                    "reserved_by": request.user.username,
+                },
+            )
+            # ✅ إشعار صفحة الحجوزات
+            async_to_sync(channel_layer.group_send)(
+                "reservations_updates",
+                {
+                    "type": "reservations_update",          # ← لازم يطابق دالة consumer
+                    "action": "new",
+                    "message": f"🆕 تم إضافة حجز جديد #{reservation.id}",
+                    "reservation_id": reservation.id,
+                    "product_name": product.name,
+                    "quantity": qty,
+                    "customer_name": customer.name if customer else "-",
+                    "customer_phone": customer.phone if customer else "-",
+                    "branch_name": branch.name,
+                    "delivery_type": reservation.get_delivery_type_display(),
+                    "status": reservation.get_status_display(),
+                    "created_at": timezone.localtime(reservation.created_at).strftime('%Y-%m-%d %H:%M:%S'),
+                    "decision_at": "",  # مفيش قرار لسه
+                    "reserved_by": request.user.username,
+                },
+            )
+
+            return JsonResponse({
+                "success": True,
+                "message": f"✅ تم حجز {product.name}" + (f" للعميل {customer.name}" if customer else ""),
+                "new_qty": inventory.quantity,
+            })
+
+        except Inventory.DoesNotExist:
+            return JsonResponse({"success": False, "message": "❌ لا يوجد مخزون لهذا المنتج في الفرع المختار."}, status=400)
         except Exception as e:
-            messages.error(request, f"حدث خطأ: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return JsonResponse({"success": False, "message": f"❌ خطأ داخلي: {str(e)}"}, status=500)
 
-        return redirect("home")
-
-    categories = Category.objects.all()
-    # ⬅️ هنا بنجيب آخر 20 حجز
-    reservations = Reservation.objects.select_related(
-        "customer", "product", "branch", "reserved_by"
-    ).order_by("-created_at")[:20]
-
+    # GET → عرض الصفحة
     return render(
         request,
-        "orders/home.html",
+        "orders/callcenter.html",
         {
             "categories": categories,
             "inventories": inventories,
+            "selected_category": int(category_id) if category_id else None,
             "query": query,
-            "reservations": reservations,  # ⬅️ مهم جداً
         },
     )
+
 #----------------------------قايمه الحجوزات---------------------------------
 @login_required
 def reservations_list(request):
@@ -233,20 +292,55 @@ def reservations_list(request):
         },
     )
 #-------------------------------------------------------------
+from django.shortcuts import get_object_or_404, redirect
+from django.contrib import messages
+from django.utils import timezone
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+from .models import Reservation
+
+
 def update_reservation_status(request, res_id, status):
     reservation = get_object_or_404(Reservation, id=res_id)
     profile = getattr(request.user, "userprofile", None)
-
     is_admin = profile and profile.role == "admin"
 
+    # ✅ تحديث الحالة في قاعدة البيانات
     if status == "confirmed":
         reservation.confirm(user=request.user, is_admin=is_admin)
-        messages.success(request, f"تم تأكيد الحجز للعميل {reservation.customer}")
+        msg = f"✅ تم تأكيد الحجز للعميل {reservation.customer}"
+        messages.success(request, msg)
     elif status == "cancelled":
         reservation.cancel(user=request.user, is_admin=is_admin)
-        messages.warning(request, f"تم إلغاء الحجز للعميل {reservation.customer}")
+        msg = f"❌ تم إلغاء الحجز للعميل {reservation.customer}"
+        messages.warning(request, msg)
     else:
-        messages.error(request, "حالة غير معروفة")
+        messages.error(request, "⚠️ حالة غير معروفة")
+        return redirect(request.META.get("HTTP_REFERER", "branch_dashboard"))
+
+    # ============================================================
+    # 🔄 إرسال إشعار لتحديث صفحة الحجوزات عبر WebSocket
+    # ============================================================
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        "reservations_updates",
+        {
+            "type": "reservations_update",      # ← لازم يطابق اسم الدالة في consumer
+            "action": "status_change",          # نميّز نوع التحديث
+            "message": msg,
+            "reservation_id": reservation.id,
+            "customer_name": reservation.customer.name if reservation.customer else "-",
+            "customer_phone": reservation.customer.phone if reservation.customer else "-",
+            "product_name": reservation.product.name,
+            "quantity": reservation.quantity,
+            "branch_name": reservation.branch.name,
+            "delivery_type": reservation.get_delivery_type_display(),
+            "status": reservation.get_status_display(),
+            "created_at": timezone.localtime(reservation.created_at).strftime('%Y-%m-%d %H:%M:%S'),
+            "decision_at": timezone.localtime(reservation.decision_at).strftime('%Y-%m-%d %H:%M:%S') if reservation.decision_at else "",
+            "reserved_by": reservation.reserved_by.username if reservation.reserved_by else "-",
+        },
+    )
 
     return redirect(request.META.get("HTTP_REFERER", "branch_dashboard"))
 #-------------------------------------------------------------
@@ -392,177 +486,6 @@ def export_reports_excel(request):
     return response
 #-------------------------------------------------------------
 @login_required
-@role_required(["callcenter"])
-def callcenter_dashboard(request):
-    query = request.GET.get("q")
-    category_id = request.GET.get("category")
-
-    # ✅ لو فيه category في GET → خزنه في Session
-    if category_id is not None:
-        request.session["selected_category"] = category_id
-    else:
-        category_id = request.session.get("selected_category")
-
-    inventories = Inventory.objects.select_related("branch", "product", "product__category")
-
-    # 🔎 منطق البحث + الفلترة
-    if query and category_id:
-        inventories = inventories.filter(
-            product__category_id=category_id,
-            product__name__icontains=query
-        )
-        if not inventories.exists():
-            inventories = Inventory.objects.filter(
-                product__name__icontains=query
-            ).select_related("branch", "product", "product__category")
-    elif query:
-        inventories = inventories.filter(product__name__icontains=query)
-    elif category_id:
-        inventories = inventories.filter(product__category_id=category_id)
-
-    # 📝 إضافة حجز جديد
-    if request.method == "POST":
-        customer_name = request.POST.get("customer_name")
-        customer_phone = request.POST.get("customer_phone")
-        delivery_type = request.POST.get("delivery_type")
-        product_id = request.POST.get("product_id")
-        branch_id = request.POST.get("branch_id")
-        qty = int(request.POST.get("quantity", 1))
-
-        # ✅ التشيك على رقم الموبايل (لو مكتوب)
-        if customer_phone:
-            if not customer_phone.isdigit() or len(customer_phone) != 11:
-                return redirect("callcenter_dashboard")
-        else:
-            customer_phone = None
-
-        product = Product.objects.get(id=product_id)
-        branch = Branch.objects.get(id=branch_id)
-
-        if customer_phone:
-            existing_customers = Customer.objects.filter(phone=customer_phone)
-        else:
-            existing_customers = Customer.objects.none()
-
-        if not existing_customers.exists():
-            customer = Customer.objects.create(name=customer_name, phone=customer_phone)
-        elif existing_customers.count() > 1:
-            return render(
-                request,
-                "orders/callcenter.html",
-                {
-                    "categories": Category.objects.all(),
-                    "inventories": inventories,
-                    "query": query,
-                    "selected_category": int(category_id) if category_id else None,
-                    "reservations": Reservation.objects.select_related(
-                        "customer", "product", "branch", "reserved_by"
-                    ).order_by("-created_at")[:20],
-                    "conflict_phone": customer_phone,
-                    "conflict_name": customer_name,
-                    "conflict_product_id": product_id,
-                    "conflict_branch_id": branch_id,
-                    "conflict_delivery_type": delivery_type,
-                    "conflict_qty": qty,
-                },
-            )
-        else:
-            existing_customer = existing_customers.first()
-            if existing_customer.name == customer_name:
-                customer = existing_customer
-            else:
-                return render(
-                    request,
-                    "orders/callcenter.html",
-                    {
-                        "categories": Category.objects.all(),
-                        "inventories": inventories,
-                        "query": query,
-                        "selected_category": int(category_id) if category_id else None,
-                        "reservations": Reservation.objects.select_related(
-                            "customer", "product", "branch", "reserved_by"
-                        ).order_by("-created_at")[:20],
-                        "conflict_phone": customer_phone,
-                        "conflict_name": customer_name,
-                        "conflict_product_id": product_id,
-                        "conflict_branch_id": branch_id,
-                        "conflict_delivery_type": delivery_type,
-                        "conflict_qty": qty,
-                    },
-                )
-
-        # ✅ إنشاء الحجز
-        try:
-            inventory = Inventory.objects.get(product=product, branch=branch)
-            if inventory.quantity >= qty:
-                Reservation.objects.create(
-                    customer=customer,
-                    product=product,
-                    branch=branch,
-                    delivery_type=delivery_type,
-                    status="pending",
-                    quantity=qty,
-                    reserved_by=request.user if request.user.is_authenticated else None,
-                )
-                inventory.quantity -= qty
-                inventory.save()
-                channel_layer = get_channel_layer()
-                async_to_sync(channel_layer.group_send)(
-                    "callcenter_updates",
-                    {
-                        "type": "callcenter_update",
-                        "product_id": product.id,
-                        "branch_id": branch.id,
-                        "branch_name": branch.name,
-                        "new_qty": inventory.quantity,
-                        "message": f"📦 تم تحديث {product.name} في فرع {branch.name} إلى {inventory.quantity}",
-                    }
-                )
-                                #return redirect("callcenter_dashboard")
-            else:
-                # ❌ خطأ الكمية
-                categories = Category.objects.all()
-                reservations = Reservation.objects.select_related(
-                    "customer", "product", "branch", "reserved_by"
-                ).order_by("-created_at")[:20]
-                return render(
-                    request,
-                    "orders/callcenter.html",
-                    {
-                        "categories": categories,
-                        "inventories": inventories,
-                        "query": query,
-                        "selected_category": int(category_id) if category_id else None,
-                        "reservations": reservations,
-                        "quantity_error": {
-                            "product_id": product.id,
-                            "branch_id": branch.id,
-                            "message": f"الكمية المطلوبة غير متوفرة (المتاح {inventory.quantity})"
-                        },
-                    },
-                )
-        except Exception as e:
-            return redirect("callcenter_dashboard")
-
-    # ✅ الحالة العادية
-    categories = Category.objects.all()
-    reservations = Reservation.objects.select_related(
-        "customer", "product", "branch", "reserved_by"
-    ).order_by("-created_at")[:20]
-
-    return render(
-        request,
-        "orders/callcenter.html",
-        {
-            "categories": categories,
-            "inventories": inventories,
-            "query": query,
-            "selected_category": int(category_id) if category_id else None,
-            "reservations": reservations,
-        },
-    )
-#-------------------------------------------------------------
-@login_required
 @role_required(["branch", "admin", "callcenter"])
 def branch_dashboard(request):
     profile = getattr(request.user, "userprofile", None)
@@ -667,7 +590,7 @@ def root_redirect(request):
         if profile.role == "admin":
             return redirect("reports")
         elif profile.role == "callcenter":
-            return redirect("callcenter_dashboard")
+            return redirect("callcenter")
         elif profile.role == "branch":
             return redirect("branch_dashboard")
         elif profile.role == "control":   # ✅ جديد

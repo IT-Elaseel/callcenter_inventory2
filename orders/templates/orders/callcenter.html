@@ -3,11 +3,10 @@
 
 {% block content %}
 <div class="cc-dashboard">
-    <!-- ✅ الجزء الثابت كله -->
     <div class="header-fixed">
         <h1 class="page-title">☎️ لوحة الكول سنتر</h1>
 
-        <!-- Search + Category Filter + Reservations Button -->
+        <!-- ✅ الفلاتر -->
         <form method="get" class="cc-filters">
             <div class="input-wrapper">
                 <input type="text" name="q" placeholder="ابحث عن منتج..." value="{{ query|default:'' }}" autofocus>
@@ -23,15 +22,12 @@
                 </select>
             </div>
             <button type="submit" class="btn btn-primary">🔍 بحث</button>
-            <a href="{% url 'reservations_list' %}" class="btn btn-secondary ml-auto">
-                📋 متابعة الحجوزات
-            </a>
+            <a href="{% url 'reservations_list' %}" class="btn btn-secondary ml-auto">📋 متابعة الحجوزات</a>
         </form>
 
         <h2 class="section-title">📦 المنتجات والمخزون</h2>
     </div>
 
-    <!-- ✅ الجدول هو اللي Scroll -->
     <div class="table-wrapper">
         <table class="styled-table">
             <thead>
@@ -58,32 +54,25 @@
                     <td>
                         {% for inv in group.list %}
                             {% if inv.quantity > 0 %}
-                                <form method="post" action="{% url 'callcenter_dashboard' %}" class="reserve-form">
+                                <!-- ✅ الفورم بقى يستخدم onsubmit فقط -->
+                                <form method="post" class="reserve-form" onsubmit="reserveProduct(event, this)">
                                     {% csrf_token %}
                                     <input type="hidden" name="product_id" value="{{ inv.product.id }}">
                                     <input type="hidden" name="branch_id" value="{{ inv.branch.id }}">
                                     <input type="text" name="customer_name" placeholder="👤 اسم العميل" required>
-                                    <input type="text" name="customer_phone" placeholder="📞 موبايل" inputmode="numeric" maxlength="11" pattern="\d{11}"
-                                        oninput="this.value=this.value.replace(/\D/g,'').slice(0,11)" >
+                                    <input type="text" name="customer_phone" placeholder="📞 موبايل" inputmode="numeric" maxlength="11"
+                                        pattern="\d{11}" oninput="this.value=this.value.replace(/\D/g,'').slice(0,11)" >
                                     <select name="delivery_type" required>
                                         <option value="pickup">🚶‍♂️ استلام</option>
                                         <option value="delivery">🚚 توصيل</option>
                                     </select>
 
-                                    <!-- ✅ خانة الكمية مع Error state -->
-                                  <input type="number" name="quantity" value="1" min="1"
-                                    data-product="{{ inv.product.id }}"
-                                    data-branch="{{ inv.branch.id }}"
-                                    class="qty {% if quantity_error and quantity_error.product_id == inv.product.id and quantity_error.branch_id == inv.branch.id %}error{% endif %}"
-                                    onfocus="this.select()">
-                                  <span>{{ inv.product.get_unit_display }}</span>
+                                    <input type="number" name="quantity" value="1" min="1"
+                                        data-product="{{ inv.product.id }}"
+                                        data-branch="{{ inv.branch.id }}"
+                                        class="qty" onfocus="this.select()">
+                                    <span>{{ inv.product.get_unit_display }}</span>
 
-                                  {% if quantity_error and quantity_error.product_id == inv.product.id and quantity_error.branch_id == inv.branch.id %}
-                                    <div class="error-msg">{{ quantity_error.message }}</div>
-                                  {% endif %}
-
-
-                                    <!-- ✅ زرار بلون ثابت حسب ID الفرع -->
                                     <button type="submit" class="btn branch-btn" data-branch-id="{{ inv.branch.id }}">
                                         احجز من {{ inv.branch.name }}
                                     </button>
@@ -219,30 +208,10 @@
     .branch-btn[data-branch-id="3"] { background:#ff5722; }   /* فرع 3 = برتقالي */
     .branch-btn[data-branch-id="4"] { background:#9c27b0; }   /* فرع 4 = بنفسجي */
 </style>
-{% if quantity_error %}
-<script>
-document.addEventListener("DOMContentLoaded", function() {
-    var row = document.querySelector(
-        'input[name="quantity"][data-product="{{ quantity_error.product_id }}"][data-branch="{{ quantity_error.branch_id }}"]'
-    );
-    if(row) {
-        // نجيب مكان العنصر بالنسبة للصفحة
-        var y = row.getBoundingClientRect().top + window.scrollY;
 
-        // نطرح ارتفاع البار الثابت (مثلاً 100 بكسل حسب طول النافبار عندك)
-        var offset = 120; // عدل الرقم ده حسب طول البار من base.html
-
-        window.scrollTo({
-            top: y - offset,
-            behavior: "smooth"
-        });
-
-        row.focus();  // يحط الكيرسور جوه
-    }
-});
 <script>
 // ========================================================
-// 🔌 WebSocket للكول سنتر
+// 1️⃣ WebSocket للكول سنتر
 // ========================================================
 const callSocket = new WebSocket(
   (window.location.protocol === "https:" ? "wss://" : "ws://") +
@@ -256,74 +225,11 @@ callSocket.onmessage = (event) => {
   const data = JSON.parse(event.data);
   console.log("📦 Update:", data);
 
-  // إظهار Toast بسيط
-  showToast(data.message, "info");
-
-  // تحديث الكمية في الجدول مباشرة
-  if (data.product_id && data.branch_id && data.new_qty !== undefined) {
-    const qtyField = document.querySelector(
-      `.reserve-form input[data-product='${data.product_id}'][data-branch='${data.branch_id}']`
-    );
-    if (qtyField) {
-      const cell = qtyField.closest("td").previousElementSibling;
-      if (cell) {
-        const branchLine = Array.from(cell.querySelectorAll("br")).length
-          ? cell.innerHTML.split("<br>").map(line =>
-              line.includes(data.branch_id)
-                ? `🏬 ${data.branch_id}: ${data.new_qty}`
-                : line
-            ).join("<br>")
-          : `🏬 ${data.branch_id}: ${data.new_qty}`;
-        cell.innerHTML = branchLine;
-      }
-    }
-  }
-};
-
-callSocket.onclose = () => console.warn("⚠️ CallCenter WebSocket closed");
-
-function showToast(message, type) {
-  const color = type === "success" ? "#28a745" : "#007bff";
-  const toast = document.createElement("div");
-  toast.textContent = message;
-  toast.style.cssText = `
-    position: fixed; bottom: 20px; right: 20px;
-    background: ${color}; color: white;
-    padding: 10px 15px; border-radius: 6px;
-    box-shadow: 0 0 5px rgba(0,0,0,0.3);
-    z-index: 9999; font-size: 14px;
-  `;
-  document.body.appendChild(toast);
-  setTimeout(() => toast.remove(), 3000);
-}
-</script>
-{% endif %}
-<script>
-// ========================================================
-// 🔌 WebSocket للكول سنتر
-// ========================================================
-const callSocket = new WebSocket(
-  (window.location.protocol === "https:" ? "wss://" : "ws://") +
-  window.location.host +
-  "/ws/callcenter/"
-);
-
-callSocket.onopen = () => console.log("✅ Connected to CallCenter WS");
-
-callSocket.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  console.log("📦 Update:", data);
-
-  showToast(data.message, "info");
-
-  // ✅ تحديث الكمية للمنتج والفرع المحددين فقط
   if (data.product_id && data.branch_id && data.new_qty !== undefined) {
     const qtyInput = document.querySelector(
       `.reserve-form input[data-product='${data.product_id}'][data-branch='${data.branch_id}']`
     );
-
     if (qtyInput) {
-      // نجيب خلية الكميات (العمود الثالث)
       const cell = qtyInput.closest("tr").querySelector("td:nth-child(3)");
       if (cell) {
         const regex = new RegExp(`🏬\\s*${data.branch_name}:\\s*\\d+`, "g");
@@ -334,12 +240,53 @@ callSocket.onmessage = (event) => {
       }
     }
   }
+  if (data.message) showToast(data.message, "info");
 };
 
 callSocket.onclose = () => console.warn("⚠️ CallCenter WebSocket closed");
 
+// ========================================================
+// 2️⃣ تنفيذ الحجز بـ Ajax بدون Reload
+// ========================================================
+async function reserveProduct(event, form) {
+  event.preventDefault();
+
+  const formData = new FormData(form);
+  const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+  try {
+    const response = await fetch("{% url 'callcenter' %}", {
+      method: "POST",
+      body: formData,
+      headers: {
+        "X-CSRFToken": csrftoken,
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      credentials: "same-origin"
+    });
+
+    const data = await response.json();
+    console.log("🧾 Server response:", data);
+
+    if (data.success) {
+      showToast(data.message || "✅ تم تسجيل الحجز بنجاح", "success");
+      form.reset();
+    } else {
+      showToast(data.message || "❌ حدث خطأ أثناء الحجز", "error");
+    }
+
+  } catch (err) {
+    console.error("Fetch error:", err);
+    showToast("⚠️ فشل الاتصال بالسيرفر", "error");
+  }
+}
+
+// ========================================================
+// 3️⃣ Toast Notification
+// ========================================================
 function showToast(message, type) {
-  const color = type === "success" ? "#28a745" : "#007bff";
+  const color = type === "success" ? "#28a745" :
+                type === "error" ? "#dc3545" : "#007bff";
   const toast = document.createElement("div");
   toast.textContent = message;
   toast.style.cssText = `

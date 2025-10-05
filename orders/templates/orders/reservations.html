@@ -209,4 +209,109 @@
   border-radius: 8px;
 }
 </style>
+<script>
+// ========================================================
+// 🔄 WebSocket لتحديث الحجوزات لحظيًا بدون Refresh
+// ========================================================
+const reservationsSocket = new WebSocket(
+  (window.location.protocol === "https:" ? "wss://" : "ws://") +
+  window.location.host +
+  "/ws/reservations/"
+);
+
+reservationsSocket.onopen = () => console.log("✅ Connected to Reservations WS");
+reservationsSocket.onclose = () => console.warn("⚠️ Reservations WS closed");
+
+const USER_ROLE = "{{ user_role|default:'guest' }}";
+// هنستخدم تمبلت URL ونبدّل الـ ID جوّه
+const CONFIRM_URL_TMPL = "{% url 'update_reservation_status' 999999 'confirmed' %}";
+const CANCEL_URL_TMPL  = "{% url 'update_reservation_status' 999999 'cancelled' %}";
+const tbody = document.querySelector(".styled-table tbody");
+
+function replaceId(urlTemplate, id) { return urlTemplate.replace("999999", id); }
+
+function buildRowHtml(d) {
+  // لو الصفحة فيها صلاحيات فرع/أدمن نظهر الأزرار
+  let actions = "-";
+  if (USER_ROLE === "branch" || USER_ROLE === "admin") {
+    if (d.status === "قيد الانتظار" || d.status === "Pending") {
+      actions = `
+        <a href="${replaceId(CONFIRM_URL_TMPL, d.reservation_id)}" class="custom-btn btn-success btn-sm">✅ تأكيد</a>
+        <a href="${replaceId(CANCEL_URL_TMPL, d.reservation_id)}"  class="custom-btn btn-danger btn-sm">❌ إلغاء</a>
+      `;
+    } else if (d.status === "مؤكد" || d.status === "Confirmed") {
+      actions = `<a href="${replaceId(CANCEL_URL_TMPL, d.reservation_id)}" class="custom-btn btn-danger btn-sm">❌ إلغاء</a>`;
+    } else if (d.status === "ملغي" || d.status === "Cancelled") {
+      actions = `<a href="${replaceId(CONFIRM_URL_TMPL, d.reservation_id)}" class="custom-btn btn-success btn-sm">✅ إعادة تأكيد</a>`;
+    }
+  }
+
+  return `
+    <tr id="res-row-${d.reservation_id}">
+      <td>${d.reservation_id}</td>
+      <td>${d.customer_name || "-"}</td>
+      <td>${d.customer_phone || "-"}</td>
+      <td>${d.product_name}</td>
+      <td>${d.quantity}</td>
+      <td>${d.branch_name}</td>
+      <td>${d.delivery_type}</td>
+      <td>${d.status}</td>
+      <td>${d.created_at || "-"}</td>
+      <td>${d.decision_at || "-"}</td>
+      <td>-</td>
+      <td>${d.reserved_by || "-"}</td>
+      <td>${actions}</td>
+    </tr>
+  `;
+}
+
+function insertOrUpdateRow(d) {
+  const rowId = `res-row-${d.reservation_id}`;
+  let row = document.getElementById(rowId);
+
+  if (!row) {
+    // صف جديد → نضيفه في أول الجدول
+    const tmp = document.createElement("tbody");
+    tmp.innerHTML = buildRowHtml(d).trim();
+    const newRow = tmp.firstElementChild;
+    tbody.prepend(newRow);
+  } else {
+    // تحديث صف موجود (تغيير حالة مثلاً)
+    row.outerHTML = buildRowHtml(d);
+  }
+}
+
+reservationsSocket.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log("📋 Reservations update:", data);
+
+  if (data.message) showToast(data.message, "info");
+
+  // new حجز جديد → ضيف صف
+  if (data.action === "new") {
+    insertOrUpdateRow(data);
+  }
+  // status_change → عدّل الصف
+  else if (data.action === "status_change") {
+    insertOrUpdateRow(data);
+  }
+};
+
+// ✅ Toast صغير
+function showToast(message, type) {
+  const color = type === "success" ? "#28a745" :
+                type === "error" ? "#dc3545" : "#007bff";
+  const toast = document.createElement("div");
+  toast.textContent = message;
+  toast.style.cssText = `
+    position: fixed; bottom: 20px; right: 20px;
+    background: ${color}; color: white;
+    padding: 10px 15px; border-radius: 6px;
+    box-shadow: 0 0 5px rgba(0,0,0,0.3);
+    z-index: 9999; font-size: 14px;
+  `;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+</script>
 {% endblock %}
