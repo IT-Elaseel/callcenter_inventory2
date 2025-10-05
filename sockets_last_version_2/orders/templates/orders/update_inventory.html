@@ -1,0 +1,130 @@
+{% extends "orders/base.html" %}
+{% block title %}تحديث المخزون{% endblock %}
+
+{% block content %}
+<div class="inventory-dashboard">
+
+  <!-- ✅ الهيدر ثابت -->
+  <div class="header-fixed d-flex justify-content-between align-items-center mb-3">
+    <h1 class="m-0" style="font-size: 1.5rem;">📦 تحديث مخزون فرع {% if branch %}{{ branch.name }}{% endif %}</h1>
+  </div>
+
+  <!-- 🔽 فلتر الأقسام -->
+  <form method="get" class="filters mb-3">
+    <div class="row g-3 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label">القسم:</label>
+        <select name="category" class="form-select" onchange="this.form.submit()">
+          <option value="">-- كل الأقسام --</option>
+          {% for c in categories %}
+            <option value="{{ c.id }}" {% if selected_category == c.id %}selected{% endif %}>
+              {{ c.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </form>
+
+  <!-- CSRF hidden -->
+  <input type="hidden" id="csrf_token" value="{{ csrf_token }}">
+
+  <!-- 🔹 المنتجات ككروت -->
+  <div class="container-fluid mt-3">
+    <div class="row">
+      {% for product in products %}
+      <div class="col-md-2 col-sm-4 col-6 mb-3">
+        <div class="card shadow-sm h-100" style="padding: .5rem; font-size: 0.9rem;">
+          <div class="card-body p-2">
+            <h6 class="card-title" style="font-size: 1rem;">{{ product.name }}</h6>
+            <p style="margin-bottom: .5rem;">الكمية الحالية:
+              {% for inv in inventories %}
+                {% if inv.product.id == product.id %}
+                  <span id="product_qty_{{ product.id }}">{{ inv.quantity }}</span>
+                {% endif %}
+              {% endfor %}
+            </p>
+            <input type="number" id="qty_{{ product.id }}" class="form-control form-control-sm mb-2" placeholder="أدخل الكمية" min="1">
+            <button class="btn btn-success btn-sm w-100" onclick="updateInventory({{ product.id }})">حفظ</button>
+          </div>
+        </div>
+      </div>
+      {% empty %}
+      <p>لا توجد منتجات في هذا القسم.</p>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<script>
+function updateInventory(productId) {
+  const qty = document.getElementById("qty_" + productId).value;
+  const csrfToken = document.getElementById("csrf_token").value;
+
+  fetch("", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "X-CSRFToken": csrfToken,
+    },
+    body: new URLSearchParams({
+      product_id: productId,
+      quantity: qty
+    }),
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      document.getElementById("product_qty_" + productId).innerText = data.new_qty;
+    } else {
+      console.error(data.message);
+    }
+  })
+  .catch(err => console.error("❌ خطأ في الاتصال:", err));
+}
+
+// ✅ اختصار زرار Enter
+document.querySelectorAll("input[id^='qty_']").forEach((input, index, allInputs) => {
+  input.addEventListener("keydown", function(event) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const productId = this.id.split("_")[1];
+      updateInventory(productId);
+      const nextInput = allInputs[index + 1];
+      if (nextInput) { nextInput.focus(); }
+    }
+  });
+});
+</script>
+
+<style>
+  html, body {
+    height: 100%;
+    margin: 0;
+    overflow: hidden; /* يمنع Scroll خارجي */
+  }
+
+  .inventory-dashboard {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .header-fixed {
+    position: sticky;
+    top: 0;
+    background: #fff;
+    z-index: 20;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #ddd;
+  }
+
+  .filters { margin-bottom: 10px; }
+  h1.m-0 {
+  font-size: 1.5rem !important;  /* يجبر h1 على 1.5rem */
+  font-weight: bold;
+  margin: 0;
+}
+</style>
+{% endblock %}

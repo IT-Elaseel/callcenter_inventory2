@@ -1,0 +1,80 @@
+{% extends "orders/base.html" %}
+{% block content %}
+<style>
+  /* ✅ تثبيت الـ Navbar */
+  .navbar {
+    position: sticky;
+    top: 0;
+    z-index: 1050; /* يخليها فوق أي عنصر تاني */
+  }
+</style>
+<div class="container py-4">
+  <h3 class="mb-3">✅ المقبولون</h3>
+  <form class="row g-2 mb-3" id="filter-form">
+    <div class="col-md-3">
+      <input type="date" id="from-date" name="from" value="{{ filters.from }}"
+             class="form-control" max="{{ today }}">
+    </div>
+    <div class="col-md-3">
+      <input type="date" id="to-date" name="to" value="{{ filters.to }}"
+             class="form-control" max="{{ today }}">
+    </div>
+    <!-- ❌ شيلنا زرار الفلترة -->
+  </form>
+
+  <div class="table-responsive">
+    <table class="table table-hover">
+      <thead class="table-light">
+        <tr>
+          <th>#</th>
+          <th>الاسم</th>
+          <th>الهاتف</th>
+          <th>تاريخ القرار</th>
+          <th>متابعة</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in accepted %}
+        <tr>
+          <td>#{{ item.applicant.order_number }}</td>
+          <td>
+            <a href="{% url 'hr:applicant_detail' item.applicant.order_number %}">
+              {{ item.applicant.full_name }}
+            </a>
+          </td>
+          <td>{{ item.applicant.phone }}</td>
+          <td>{{ item.applicant.decision_at|date:"Y-m-d H:i" }}</td>
+          <td>{{ item.follow_up_note|default:"-" }}</td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="5" class="text-center text-muted">لا يوجد</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  const fromInput = document.getElementById('from-date');
+  const toInput = document.getElementById('to-date');
+  const form = document.getElementById('filter-form');
+
+  function autoSubmit() {
+    let fromDate = fromInput.value;
+    let toDate = toInput.value;
+
+    if (fromDate && toDate && fromDate > toDate) {
+      // ✅ لو from أكبر من to خليه مساوي لـ from
+      toInput.value = fromDate;
+      toDate = fromDate;
+    }
+
+    form.submit();
+  }
+
+  fromInput.addEventListener('change', autoSubmit);
+  toInput.addEventListener('change', autoSubmit);
+</script>
+{% endblock %}

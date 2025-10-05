@@ -1,0 +1,165 @@
+{% extends "orders/base.html" %}
+{% load static %}
+<script>
+  const LOGO_URL = "{% static 'img/ElAseel_logo_bw.png' %}";
+</script>
+{% block title %}📋 طلبات فرع {{ branch.name }}{% endblock %}
+{% block content %}
+
+<div class="container mt-3">
+  <h1>🏪 طلبات فرع {{ branch.name }}</h1>
+
+  <!-- ✅ فلترة -->
+  <form method="get" class="row g-3 my-3" id="filterForm">
+    <div class="col-md-4">
+      <label class="form-label">من:</label>
+      <input type="date" name="start_date" class="form-control"
+             value="{{ selected_start }}" onchange="document.getElementById('filterForm').submit()" max="{{ today|date:'Y-m-d' }}">
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">إلى:</label>
+      <input type="date" name="end_date" class="form-control"
+             value="{{ selected_end }}" onchange="document.getElementById('filterForm').submit()" max="{{ today|date:'Y-m-d' }}">
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">الحالة:</label>
+      <select name="printed" class="form-select" onchange="document.getElementById('filterForm').submit()">
+        <option value="all" {% if printed_filter == "all" %}selected{% endif %}>-- الكل --</option>
+        <option value="yes" {% if printed_filter == "yes" %}selected{% endif %}>✅ مطبوعة</option>
+        <option value="no" {% if printed_filter == "no" %}selected{% endif %}>🕗 غير مطبوعة</option>
+      </select>
+    </div>
+  </form>
+
+  <!-- ✅ الطلبات -->
+  {% for key, requests in grouped_requests.items %}
+    {% with branch=key.0 order_number=key.1 user=key.2 %}
+    <div class="card my-4 request-block {% if requests.0.is_printed %}bg-light{% endif %}" id="request-{{ order_number }}">
+      <!-- الهيدر -->
+      <div class="card-header d-flex justify-content-between align-items-center"
+           style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#collapse-{{ order_number }}">
+        <h4 class="m-0">🧾 طلبية رقم #{{ order_number }}</h4>
+        <div>
+          <small>بواسطة: {{ user.username }}</small><br>
+          <small>⏰ وقت الإرسال: {{ requests.0.confirmed_at|date:"Y-m-d H:i:s" }}</small><br>
+          {% if requests.0.is_printed %}
+            <span class="badge bg-success">✅ تمت الطباعة ({{ requests.0.printed_at|date:"Y-m-d H:i:s" }})</span>
+          {% else %}
+            <span class="badge bg-warning text-dark">🕗 لم تُطبع</span>
+          {% endif %}
+        </div>
+        <div>
+          <button onclick="printOrder('{{ order_number }}')" class="btn btn-primary btn-sm">🖨️ طباعة</button>
+        </div>
+      </div>
+
+      <!-- البودي (مخفي افتراضيًا) -->
+      <div id="collapse-{{ order_number }}" class="collapse">
+        <div class="card-body">
+          <table class="table table-bordered text-center">
+            <thead class="table-dark">
+              <tr>
+                <th>المنتج</th>
+                <th>الكمية</th>
+                <th>الوحدة</th>
+                <th>الوقت</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in requests %}
+                <tr>
+                  <td>{{ r.product.name }}</td>
+                  <td>{{ r.quantity }}</td>
+                  <td>{{ r.product.get_unit_display }}</td>
+                  <td>{{ r.created_at|date:"H:i" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endwith %}
+  {% empty %}
+    <p class="text-center">🚫 لا يوجد طلبات</p>
+  {% endfor %}
+</div>
+
+<!-- 🎨 ستايلات الطباعة -->
+<style>
+  @media print {
+    .btn, form {
+      display: none !important;
+    }
+  }
+</style>
+<script>
+  function printOrder(orderNumber) {
+    const requestBlock = document.getElementById("request-" + orderNumber);
+
+    const w = window.open('', '_blank', 'width=800,height=600');
+    w.document.write('<html><head><title>طباعة</title>');
+    w.document.write(`
+      <style>
+        @page { margin: 6mm; }
+        body { font-family: Arial, sans-serif; direction: rtl; font-size: 14px; }
+        .receipt { max-width: 80mm; margin: 0 auto; }
+        .logo-wrap { text-align: center; margin-bottom: 6px; }
+        .logo-wrap img { max-width: 150px; height: auto; object-fit: contain; }
+        .header { text-align: center; border-bottom: 1px dashed #000;
+                  padding-bottom: 5px; margin-bottom: 8px; font-size: 12px; }
+        .footer { border-top: 1px dashed #000; text-align: center;
+                  font-size: 12px; margin-top: 10px; padding-top: 5px; }
+        .footer::after { content: ""; display: block; height: 60px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 5px; }
+        th, td { border: 1px solid #000; padding: 6px; text-align: center; font-size: 12px; }
+        .btn, form { display: none !important; }
+        td:last-child, th:last-child { display: none; }
+      </style>
+    `);
+
+    w.document.write('</head><body>');
+    w.document.write('<div class="receipt">');
+    w.document.write('<div class="logo-wrap"><img src="/static/img/ElAseel_logo_bw.png" alt="Logo"></div>');
+
+    const now = new Date();
+    const printTime = now.toLocaleString("ar-EG", { hour12: false });
+    w.document.write('<div class="header">🕒 وقت الطباعة: ' + printTime + '</div>');
+
+    w.document.write(requestBlock.innerHTML);
+
+    w.document.write('<div class="footer">✨ مع تحيات فرع {{ branch.name }} داخل حلواني الأصيل ✨</div>');
+
+    w.document.write('</div></body></html>');
+    w.document.close();
+    w.focus();
+
+    w.onafterprint = function() {
+      fetch(`/mark-printed/${orderNumber}/`, {
+        method: "POST",
+        headers: { "X-CSRFToken": getCookie("csrftoken") }
+      }).finally(() => {
+        w.close();
+      });
+    };
+
+    w.print();
+  }
+
+  function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== "") {
+      const cookies = document.cookie.split(";");
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === (name + "=")) {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
+      }
+    }
+    return cookieValue;
+  }
+</script>
+
+{% endblock %}

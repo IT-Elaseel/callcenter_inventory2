@@ -1,0 +1,24 @@
+{% extends "orders/base.html" %}
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2>{{ title }}</h2>
+
+  {% if success %}
+    <div class="alert alert-success">✅ تم التعديل بنجاح .. سيتم تحويلك تلقائيًا</div>
+    <script>
+      setTimeout(function() {
+        window.location.href = "{% url redirect_url %}";
+      }, 2000); // 2 ثواني
+    </script>
+  {% else %}
+    <form method="post">
+      {% csrf_token %}
+      {{ form.as_p }}
+      <button type="submit" class="btn btn-success">💾 حفظ</button>
+      <a href="{% url 'view_data' %}" class="btn btn-secondary">⬅️ رجوع</a>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}

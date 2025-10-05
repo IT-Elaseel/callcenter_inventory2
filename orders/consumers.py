@@ -116,5 +116,6 @@ class ReservationsConsumer(AsyncWebsocketConsumer):
             "status": event.get("status"),
             "created_at": event.get("created_at"),
             "decision_at": event.get("decision_at"),
+            "branch_last_modified_at": event.get("branch_last_modified_at"),
             "reserved_by": event.get("reserved_by"),
         }))

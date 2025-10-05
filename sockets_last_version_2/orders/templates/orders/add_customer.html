@@ -1,0 +1,24 @@
+{% extends "orders/base.html" %}
+{% block title %}إضافة عميل{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>إضافة عميل جديد</h2>
+    <form method="post">
+        {% csrf_token %}
+        <div class="mb-3">
+            <label for="name" class="form-label">اسم العميل</label>
+            <input type="text" class="form-control" id="name" name="name" required>
+        </div>
+        <div class="mb-3">
+            <label for="phone" class="form-label">رقم الهاتف</label>
+            <input type="text" class="form-control" id="phone" name="phone" required>
+        </div>
+        <div class="mb-3">
+            <label for="address" class="form-label">العنوان</label>
+            <textarea class="form-control" id="address" name="address"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">حفظ</button>
+    </form>
+</div>
+{% endblock %}

@@ -317,7 +317,12 @@ def update_reservation_status(request, res_id, status):
     else:
         messages.error(request, "⚠️ حالة غير معروفة")
         return redirect(request.META.get("HTTP_REFERER", "branch_dashboard"))
+    # 🕒 حدث توقيت آخر إجراء للفرع
+    reservation.branch_last_modified_at = timezone.now()
+    reservation.save(update_fields=["branch_last_modified_at"])
 
+    # 🔁 مهم جدًا: نرجّع نحمل نسخة حديثة من قاعدة البيانات
+    reservation.refresh_from_db()
     # ============================================================
     # 🔄 إرسال إشعار لتحديث صفحة الحجوزات عبر WebSocket
     # ============================================================
@@ -338,6 +343,7 @@ def update_reservation_status(request, res_id, status):
             "status": reservation.get_status_display(),
             "created_at": timezone.localtime(reservation.created_at).strftime('%Y-%m-%d %H:%M:%S'),
             "decision_at": timezone.localtime(reservation.decision_at).strftime('%Y-%m-%d %H:%M:%S') if reservation.decision_at else "",
+            "branch_last_modified_at": timezone.localtime(reservation.branch_last_modified_at).strftime('%Y-%m-%d %H:%M:%S') if reservation.branch_last_modified_at else "-",
             "reserved_by": reservation.reserved_by.username if reservation.reserved_by else "-",
         },
     )

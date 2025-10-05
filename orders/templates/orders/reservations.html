@@ -57,7 +57,7 @@
       </thead>
       <tbody>
         {% for res in reservations %}
-        <tr>
+        <tr id="res-row-{{ res.id }}">
           <td>{{ res.id }}</td>
           <td>{{ res.customer.name }}</td>
           <td>{{ res.customer.phone }}</td>
@@ -258,7 +258,7 @@ function buildRowHtml(d) {
       <td>${d.status}</td>
       <td>${d.created_at || "-"}</td>
       <td>${d.decision_at || "-"}</td>
-      <td>-</td>
+      <td>${d.branch_last_modified_at || "-"}</td>
       <td>${d.reserved_by || "-"}</td>
       <td>${actions}</td>
     </tr>

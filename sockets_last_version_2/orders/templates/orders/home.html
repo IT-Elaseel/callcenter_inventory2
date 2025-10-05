@@ -1,0 +1,80 @@
+{% extends "orders/base.html" %}
+{% block title %}لوحة الفرع{% endblock %}
+
+{% block content %}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sweets Factory</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+        th { background: #f4f4f4; }
+        .low-stock { background: #ffcccc; font-weight: bold; }
+        .messages { margin: 15px 0; }
+        .messages .success { color: green; }
+        .messages .error { color: red; }
+    </style>
+</head>
+<body>
+  <h1>🍰 حلواني الأصيل - لوحة تحكم الكول سنتر</h1>
+
+    <!-- Messages -->
+    <div class="messages">
+        {% for message in messages %}
+            <p class="{{ message.tags }}">{{ message }}</p>
+        {% endfor %}
+    </div>
+
+    <!-- Search box -->
+    <form method="get" action="">
+        <input type="text" name="q" placeholder="ابحث عن منتج..." value="{{ query|default:'' }}">
+        <button type="submit">بحث</button>
+    </form>
+
+    <h2>Products & Inventory</h2>
+    <table>
+        <tr>
+            <th>Product</th>
+            <th>Category</th>
+            <th>Branch</th>
+            <th>Quantity</th>
+            <th>Price</th>
+            <th>Reserve</th>
+        </tr>
+        {% for inv in inventories %}
+        <tr class="{% if inv.quantity == 0 or inv.quantity < 5 %}low-stock{% endif %}">
+            <td>{{ inv.product.name }}</td>
+            <td>{{ inv.product.category.name }}</td>
+            <td>{{ inv.branch.name }}</td>
+            <td>{{ inv.quantity }}</td>
+            <td>{{ inv.product.price }} EGP</td>
+            <td>
+                {% if inv.quantity > 0 %}
+                <form method="post" style="display:inline;">
+                    {% csrf_token %}
+                    <input type="hidden" name="product_id" value="{{ inv.product.id }}">
+                    <input type="hidden" name="branch_id" value="{{ inv.branch.id }}">
+                    <input type="text" name="customer_name" placeholder="اسم العميل" required>
+                    <input type="text" name="customer_phone" placeholder="موبايل" required>
+                    <select name="delivery_type" required>
+                        <option value="pickup">Pickup</option>
+                        <option value="delivery">Delivery</option>
+                    </select>
+                    <button type="submit">Reserve</button>
+                </form>
+                {% else %}
+                    Not Available
+                {% endif %}
+            </td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="6">لا توجد نتائج</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
+{% endblock %}

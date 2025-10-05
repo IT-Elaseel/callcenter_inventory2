@@ -1,0 +1,195 @@
+{% extends "orders/base.html" %}
+{% load static %}
+<script>
+  // الأبيض × أسود (الموصى به للطابعة الحرارية)
+  const LOGO_URL = "{% static 'img/ElAseel_logo_bw.png' %}";
+  // لو حبيت الرمادي بدلاً منها:
+  // const LOGO_URL = "{% static 'img/ElAseel_logo_gray.png' %}";
+</script>
+{% block title %}📋 طلبات الفروع{% endblock %}
+{% block content %}
+
+<div class="container mt-3">
+  <h1>🎛️ لوحة الكنترول - طلبات اليوم</h1>
+
+  <!-- ✅ فلترة -->
+  <form method="get" class="row g-3 my-3" id="filterForm">
+    <div class="col-md-3">
+      <label class="form-label">من:</label>
+      <input type="date" name="start_date" class="form-control"
+             value="{{ selected_start }}" onchange="document.getElementById('filterForm').submit()" max="{{ today|date:'Y-m-d' }}">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">إلى:</label>
+      <input type="date" name="end_date" class="form-control"
+             value="{{ selected_end }}" onchange="document.getElementById('filterForm').submit()" max="{{ today|date:'Y-m-d' }}">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">الفرع:</label>
+      <select name="branch" class="form-select" onchange="document.getElementById('filterForm').submit()">
+        <option value="">-- كل الفروع --</option>
+        {% for b in branches %}
+          <option value="{{ b.id }}" {% if b.id|stringformat:'s' == selected_branch %}selected{% endif %}>
+            {{ b.name }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">الحالة:</label>
+      <select name="printed" class="form-select" onchange="document.getElementById('filterForm').submit()">
+        <option value="all" {% if printed_filter == "all" %}selected{% endif %}>-- الكل --</option>
+        <option value="yes" {% if printed_filter == "yes" %}selected{% endif %}>✅ مطبوعة</option>
+        <option value="no" {% if printed_filter == "no" %}selected{% endif %}>🕗 غير مطبوعة</option>
+      </select>
+    </div>
+  </form>
+
+  <!-- ✅ الطلبات -->
+  <div id="requests-container">
+    {% include "orders/_requests_list.html" %}
+  </div>
+<!-- 🎨 ستايلات الطباعة -->
+<style>
+  @media print {
+    .btn, form {
+      display: none !important;
+    }
+  }
+</style>
+<script>
+  function printOrder(orderNumber) {
+    const requestBlock = document.getElementById("request-" + orderNumber);
+
+    const w = window.open('', '_blank', 'width=800,height=600');
+    w.document.write('<html><head><title>طباعة</title>');
+    w.document.write(`
+      <style>
+        @page { margin: 6mm; }
+        body { font-family: Arial, sans-serif; direction: rtl; font-size: 14px; }
+        .receipt { max-width: 80mm; margin: 0 auto; }
+        .logo-wrap { text-align: center; margin-bottom: 6px; }
+        .logo-wrap img { max-width: 150px; height: auto; object-fit: contain; }
+        .header { text-align: center; border-bottom: 1px dashed #000;
+                  padding-bottom: 5px; margin-bottom: 8px; font-size: 12px; }
+        .footer { border-top: 1px dashed #000; text-align: center;
+                  font-size: 12px; margin-top: 10px; padding-top: 5px; }
+        .footer::after { content: ""; display: block; height: 60px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 5px; }
+        th, td { border: 1px solid #000; padding: 6px; text-align: center; font-size: 12px; }
+        .btn, form { display: none !important; }
+        td:last-child, th:last-child { display: none; }
+      </style>
+    `);
+
+    w.document.write('</head><body>');
+    w.document.write('<div class="receipt">');
+
+    // ✅ اللوجو
+    w.document.write('<div class="logo-wrap"><img src="/static/img/ElAseel_logo_bw.png" alt="Logo"></div>');
+
+    // ✅ Header
+    const now = new Date();
+    const printTime = now.toLocaleString("ar-EG", { hour12: false });
+    w.document.write('<div class="header">🕒 وقت الطباعة: ' + printTime + '</div>');
+
+    // ✅ محتوى الطلبية
+    w.document.write(requestBlock.innerHTML);
+
+    // ✅ Footer
+    w.document.write('<div class="footer">✨ مع تحيات الكنترول داخل حلواني الأصيل ✨</div>');
+
+    w.document.write('</div></body></html>');
+    w.document.close();
+
+    w.focus();
+
+    // ✅ بعد ما يطبع → يقفل النافذة ويحدث حالة الطلبية
+    w.onafterprint = function() {
+      fetch(`/mark-printed/${orderNumber}/`, {
+        method: "POST",
+        headers: { "X-CSRFToken": getCookie("csrftoken") }
+      }).finally(() => {
+        w.close();  // 👈 عشان المرة الجاية يفتح نافذة جديدة
+        location.reload(); // 👈 يجدد الصفحة ويظهر ان الطلبية اتعلمت مطبوعة
+      });
+    };
+
+    w.onload = function() {
+      setTimeout(() => {
+        w.print();
+      }, 500); // 🕒 نصف ثانية للتأكد أن الصورة والـ DOM اتحملوا
+    };
+  }
+
+  // دالة تجيب CSRF من الكوكيز
+  function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== "") {
+      const cookies = document.cookie.split(";");
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === (name + "=")) {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
+      }
+    }
+    return cookieValue;
+  }
+  // ========================================================
+  // 🔌 WebSocket live updates  (نسخة نظيفة بدون تكرار)
+  // ========================================================
+  const socket = new WebSocket(
+    (window.location.protocol === "https:" ? "wss://" : "ws://") +
+    window.location.host +
+    "/ws/control/"
+  );
+
+  socket.onopen = () => console.log("✅ WebSocket connected");
+
+  socket.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    console.log("📩 New update:", data);
+
+    if (["printed", "new"].includes(data.action)) {
+      showToast(data.message, "info");
+      refreshRequests(); // تحديث القائمة بدون Reload
+    }
+  };
+
+  socket.onclose = () => console.warn("⚠️ WebSocket closed");
+
+  // Toast بسيط
+  function showToast(message, type) {
+    const color = type === "success" ? "#28a745" : "#007bff";
+    const toast = document.createElement("div");
+    toast.textContent = message;
+    toast.style.cssText = `
+      position: fixed; bottom: 20px; right: 20px;
+      background: ${color}; color: white;
+      padding: 10px 15px; border-radius: 6px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.3);
+      z-index: 9999; font-size: 14px;
+    `;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+  }
+
+  // جلب HTML الطلبات فقط
+  function refreshRequests() {
+    const params = new URLSearchParams({
+      start_date: document.querySelector("[name='start_date']").value,
+      end_date: document.querySelector("[name='end_date']").value,
+      branch: document.querySelector("[name='branch']").value,
+      printed: document.querySelector("[name='printed']").value
+    });
+    fetch("/control-requests/data?" + params.toString())
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById("requests-container").innerHTML = data.html;
+      });
+  }
+  </script>
+
+{% endblock %}

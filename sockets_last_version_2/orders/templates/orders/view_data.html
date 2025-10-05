@@ -1,0 +1,204 @@
+{% extends "orders/base.html" %}
+{% block title %}عرض البيانات{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2>📊 عرض البيانات</h2>
+
+  <!-- 🔽 اختيار الجدول اللي هيظهر -->
+  <form method="get" class="mb-3 d-flex gap-2 align-items-center">
+    <label class="form-label">اختر الجدول:</label>
+    <select name="table" class="form-select" style="max-width:200px;" onchange="this.form.submit()">
+      <option value="categories" {% if selected_table == "categories" %}selected{% endif %}>الأقسام</option>
+      <option value="products" {% if selected_table == "products" %}selected{% endif %}>المنتجات</option>
+      <option value="branches" {% if selected_table == "branches" %}selected{% endif %}>الفروع</option>
+    </select>
+
+    {% if selected_table == "products" %}
+    <!-- ✅ فلتر بالقسم -->
+    <select name="category" class="form-select" style="max-width:200px;" onchange="this.form.submit()">
+      <option value="">-- كل الأقسام --</option>
+      {% for c in categories %}
+        <option value="{{ c.id }}" {% if selected_category == c.id|stringformat:"s" %}selected{% endif %}>
+          {{ c.name }}
+        </option>
+      {% endfor %}
+    </select>
+    <!-- 🔍 مربع بحث للمنتجات -->
+      <input type="text" name="q" class="form-control" placeholder="بحث عن منتج..." value="{{ query|default:'' }}" autofocus>
+      <!--<button type="submit" class="btn btn-primary">بحث</button> -->
+    {% endif %}
+  </form>
+
+  <!-- ✅ جدول الأقسام -->
+  {% if selected_table == "categories" %}
+    <h5>الأقسام</h5>
+    <table class="table table-striped table-bordered">
+      <thead class="table-primary">
+        <tr>
+          <th>#</th>
+          <th>الاسم</th>
+          <th>الوصف</th>
+          <th>تاريخ آخر تعديل</th>
+          <th>إجراءات</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in categories %}
+          <tr>
+            <td>{{ forloop.counter }}</td>
+            <td>{{ c.name }}</td>
+            <td>{{ c.description }}</td>
+            <td>{{ c.updated_at|date:"Y-m-d H:i" }}</td>
+            <td>
+              <a href="{% url 'edit_category' c.id %}?table={{ selected_table }}&q={{ query }}&category={{ selected_category }}"
+   class="btn btn-sm btn-warning">✏️ تعديل</a>
+              <form method="post" class="delete-form d-inline">
+                {% csrf_token %}
+                <input type="hidden" name="delete_category" value="{{ c.id }}">
+                <button type="submit" class="btn btn-sm btn-danger">🗑 حذف</button>
+              </form>
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="5">لا توجد أقسام</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+  <!-- ✅ جدول المنتجات -->
+  {% if selected_table == "products" %}
+    <h5>المنتجات</h5>
+    <table class="table table-striped table-bordered">
+      <thead class="table-success">
+        <tr>
+          <th>#</th>
+          <th>الاسم</th>
+          <th>القسم</th>
+          <th>السعر</th>
+          <th>الوحدة</th>
+          <th>تاريخ آخر تعديل</th>
+          <th>إجراءات</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in products %}
+          <tr>
+            <td>{{ forloop.counter }}</td>
+            <td>{{ p.name }}</td>
+            <td>{{ p.category.name }}</td>
+            <td>{{ p.price }}</td>
+            <td>{{ p.get_unit_display }}</td>
+            <td>{{ p.updated_at|date:"Y-m-d H:i" }}</td>
+            <td>
+              <a href="{% url 'edit_product' p.id %}?table={{ selected_table }}&q={{ query }}&category={{ selected_category }}"
+   class="btn btn-sm btn-warning">✏️ تعديل</a>
+              <form method="post" class="delete-form d-inline">
+                {% csrf_token %}
+                <input type="hidden" name="delete_product" value="{{ p.id }}">
+                <button type="submit" class="btn btn-sm btn-danger">🗑 حذف</button>
+              </form>
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="7">لا توجد منتجات</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+  <!-- ✅ جدول الفروع -->
+  {% if selected_table == "branches" %}
+    <h5>الفروع</h5>
+    <table class="table table-striped table-bordered">
+      <thead class="table-info">
+        <tr>
+          <th>#</th>
+          <th>الاسم</th>
+          <th>العنوان</th>
+          <th>الهاتف</th>
+          <th>تاريخ آخر تعديل</th>
+          <th>إجراءات</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in branches %}
+          <tr>
+            <td>{{ forloop.counter }}</td>
+            <td>{{ b.name }}</td>
+            <td>{{ b.address }}</td>
+            <td>{{ b.phone }}</td>
+            <td>{{ b.updated_at|date:"Y-m-d H:i" }}</td>
+            <td>
+              <a href="{% url 'edit_branch' b.id %}?table={{ selected_table }}&q={{ query }}&category={{ selected_category }}"
+   class="btn btn-sm btn-warning">✏️ تعديل</a>
+              <form method="post" class="delete-form d-inline">
+                {% csrf_token %}
+                <input type="hidden" name="delete_branch" value="{{ b.id }}">
+                <button type="submit" class="btn btn-sm btn-danger">🗑 حذف</button>
+              </form>
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="6">لا توجد فروع</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</div>
+
+<!-- 🔽 JavaScript -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+  document.addEventListener("DOMContentLoaded", function() {
+    document.querySelectorAll(".delete-form").forEach(form => {
+      form.addEventListener("submit", function(e) {
+        e.preventDefault(); // نمنع الإرسال التقليدي
+
+        Swal.fire({
+          title: "هل أنت متأكد؟",
+          text: "لا يمكن التراجع بعد الحذف!",
+          icon: "warning",
+          showCancelButton: true,
+          confirmButtonColor: "#d33",
+          cancelButtonColor: "#3085d6",
+          confirmButtonText: "🗑 نعم، احذف",
+          cancelButtonText: "إلغاء"
+        }).then((result) => {
+          if (result.isConfirmed) {
+            // ✅ لو المستخدم وافق → ابعت الطلب
+            const formData = new FormData(form);
+
+            fetch("", {
+              method: "POST",
+              headers: {
+                "X-CSRFToken": form.querySelector("[name=csrfmiddlewaretoken]").value
+              },
+              body: formData
+            })
+            .then(res => res.text())
+            .then(html => {
+              Swal.fire({
+                title: "تم الحذف!",
+                text: "تم حذف العنصر بنجاح.",
+                icon: "success",
+                confirmButtonText: "👌 موافق"
+              }).then(() => {
+                // بعد ما يقفل الرسالة نحدّث الصفحة
+                document.open();
+                document.write(html);
+                document.close();
+              });
+            })
+            .catch(err => {
+              Swal.fire("خطأ", "حصل مشكلة أثناء الحذف", "error");
+              console.error("خطأ أثناء الحذف:", err);
+            });
+          }
+        });
+      });
+    });
+  });
+</script>
+{% endblock %}
