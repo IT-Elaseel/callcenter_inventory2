@@ -202,6 +202,8 @@
             <a href="/customers/" class="btn btn-sm text-white">👥 العملاء</a>
 
           {% elif role == "branch" %}
+            <a href="/inventory/set-stamp/" class="btn btn-sm text-white">🧾 استامبا تحديث المخزون</a>
+            <a href="{% url 'set_standard_request' %}" class="btn btn-sm text-white">⭐استامبا إنشاء طلبيه</a>
             <a href="{% url 'reservations_list' %}" class="btn btn-sm text-white">📑 الحجوزات</a>
             <a href="{% url 'branch_requests' %}" class="btn btn-sm text-white">📋 طلباتى</a>
             <a href="/inventory/transactions/" class="btn btn-sm text-white">📜 سجل عمليات المخزون</a>

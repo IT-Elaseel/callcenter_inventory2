@@ -21,4 +21,36 @@
     </form>
   {% endif %}
 </div>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const mainCategory = document.getElementById("mainCategory");
+  const subCategory = document.getElementById("subCategory");
+
+  if (mainCategory && subCategory) {
+    // 🔸 عند تغيير القسم الرئيسي
+    mainCategory.addEventListener("change", function() {
+      const mainId = this.value;
+      subCategory.innerHTML = '<option value="">-- اختر القسم الفرعي --</option>';
+      subCategory.disabled = true; // يقفل الحقل مؤقتًا
+
+      if (mainId) {
+        fetch(`/get-subcategories/?main_id=${mainId}`)
+          .then(res => res.json())
+          .then(data => {
+            data.forEach(sub => {
+              const option = document.createElement("option");
+              option.value = sub.id;
+              option.textContent = sub.name;
+              subCategory.appendChild(option);
+            });
+            subCategory.disabled = false; // يفتحه بعد تحميل البيانات
+          })
+          .catch(() => {
+            subCategory.disabled = false;
+          });
+      }
+    });
+  }
+});
+</script>
 {% endblock %}

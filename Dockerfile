@@ -1,26 +1,23 @@
-# ==============================
-# Base image
-# ==============================
 FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# لو هتستخدم Postgres نثبت أدوات البناء والـ libpq
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential libpq-dev \
+ && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install system dependencies (for psycopg2 & channels)
-RUN apt-get update && apt-get install -y build-essential libpq-dev && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements and install Python packages
-COPY requirements.txt .
+COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy all project files
-COPY . .
+COPY . /app/
 
-# Environment variables
-ENV PYTHONUNBUFFERED=1
-ENV DJANGO_SETTINGS_MODULE=sweets_factory.settings
+# خلي سكريبت الـ entrypoint قابل للتنفيذ
+RUN chmod +x /app/entrypoint.sh
 
-# Expose Daphne port
 EXPOSE 8000
 
-# Run entrypoint script (includes migrations and Daphne)
-ENTRYPOINT ["bash", "entrypoint.sh"]
+ENTRYPOINT ["./entrypoint.sh"]

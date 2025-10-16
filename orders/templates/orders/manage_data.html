@@ -3,6 +3,11 @@
 {% block content %}
 <div class="container mt-4">
   <h2>➕ إضافة قسم / منتج / فرع</h2>
+  <div class="mb-3 text-end">
+    <a href="{% url 'import_products' %}" class="btn btn-warning">
+      📤 استيراد منتجات من Excel
+    </a>
+  </div>
 
   <div class="row">
     <!-- ✅ إضافة قسم -->
@@ -21,10 +26,16 @@
     <!-- ✅ إضافة منتج -->
     <div class="col-md-4">
       <h5>إضافة منتج</h5>
-      <form method="post">
+      <form method="post" id="productForm">
         {% csrf_token %}
-        {{ prod_form.as_p }}
-        <button type="submit" name="add_product" class="btn btn-success">💾 حفظ</button>
+        {{ prod_form.name.label_tag }} {{ prod_form.name }}
+        {{ prod_form.description.label_tag }} {{ prod_form.description }}
+        {{ prod_form.price.label_tag }} {{ prod_form.price }}
+        {{ prod_form.unit.label_tag }} {{ prod_form.unit }}
+        {{ prod_form.category.label_tag }} {{ prod_form.category }}
+        {{ prod_form.second_category.label_tag }} {{ prod_form.second_category }}
+        {{ prod_form.is_available.label_tag }} {{ prod_form.is_available }}
+        <button type="submit" name="add_product" class="btn btn-success mt-2">💾 حفظ</button>
         {% if success_message and "المنتج" in success_message %}
           <div class="alert alert-success mt-2" id="success-msg">{{ success_message }}</div>
         {% endif %}
@@ -56,5 +67,28 @@
       }, 3000);
     }
   });
+// -------------------------------------------------------------------------------------------------------
+document.addEventListener("DOMContentLoaded", function() {
+  const mainCategory = document.getElementById("mainCategory");
+  const subCategory = document.getElementById("subCategory");
+
+  mainCategory?.addEventListener("change", function() {
+    const mainId = this.value;
+    subCategory.innerHTML = '<option value="">-- اختر القسم الفرعي --</option>';
+
+    if (mainId) {
+      fetch(`/get-subcategories/?main_id=${mainId}`)
+        .then(res => res.json())
+        .then(data => {
+          data.forEach(sub => {
+            const option = document.createElement("option");
+            option.value = sub.id;
+            option.textContent = sub.name;
+            subCategory.appendChild(option);
+          });
+        });
+    }
+  });
+});
 </script>
 {% endblock %}

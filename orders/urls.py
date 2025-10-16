@@ -34,5 +34,13 @@ urlpatterns = [
     path("control-requests/data", views.control_requests_data, name="control_requests_data"),  # ✅ ده الجديد
     path("branch/requests/", views.branch_requests, name="branch_requests"),
     path("mark-printed/<str:order_number>/", views.mark_printed, name="mark_printed"),
+    path("import-products/", views.import_products, name="import_products"),
+    path("get-subcategories/", views.get_subcategories, name="get_subcategories"),
+    path('toggle-product/<int:pk>/', views.toggle_product_availability, name='toggle_product_availability'),
+    path("set-standard-request/", views.set_standard_request, name="set_standard_request"),
+    # path("inventory/select-stamp/", views.select_stamp_page, name="select_stamp_page"),
+    # path("inventory/select-stamp/<int:stamp_id>/", views.select_stamp, name="select_stamp"),
+    path("inventory/set-stamp/", views.set_inventory_stamp, name="set_inventory_stamp"),
+
 
 ]

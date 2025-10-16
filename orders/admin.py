@@ -1,5 +1,56 @@
 from django.contrib import admin
-from .models import Branch, Product, Inventory, Reservation, InventoryTransaction, Customer,Category,UserProfile,DailyRequest
+from django.urls import reverse
+from django.utils.html import format_html
+from .models import (Branch, Product, Inventory, Reservation, InventoryTransaction,Customer, Category, UserProfile, DailyRequest, SecondCategory)
+# --------------------------------------------------------
+# 📦 المنتجات
+@admin.register(Product)
+class ProductAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'price', 'category', 'second_category', 'is_available', 'updated_at')  # ✅ أضفنا الحالة
+    list_filter = ('category', 'second_category', 'is_available')  # ✅ نقدر نفلتر بيها
+    search_fields = ('name',)
+    list_editable = ('is_available',)  # ✅ تعديل مباشر من الجدول
+
+
+
+
+# --------------------------------------------------------
+# 🧩 التصنيف الرئيسي
+@admin.register(Category)
+class CategoryAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'view_products_link')
+    search_fields = ('name',)
+
+    def view_products_link(self, obj):
+        """زر يفتح المنتجات التابعة للتصنيف"""
+        url = (
+            reverse("admin:orders_product_changelist")
+            + f"?category__id__exact={obj.id}"
+        )
+        return format_html(
+            '<a class="button" href="{}" style="font-weight:bold;color:#0b6efd;">عرض المنتجات</a>', url
+        )
+    view_products_link.short_description = "المنتجات"
+
+
+# --------------------------------------------------------
+# 🧩 التصنيف الفرعي
+@admin.register(SecondCategory)
+class SecondCategoryAdmin(admin.ModelAdmin):
+    list_display = ('name', 'main_category', 'updated_at', 'view_products_link')
+    search_fields = ('name', 'main_category__name')
+    list_filter = ('main_category',)
+
+    def view_products_link(self, obj):
+        """زر يفتح المنتجات التابعة للتصنيف الفرعي"""
+        url = (
+            reverse("admin:orders_product_changelist")
+            + f"?second_category__id__exact={obj.id}"
+        )
+        return format_html(
+            '<a class="button" href="{}" style="font-weight:bold;color:#0b6efd;">عرض المنتجات</a>', url
+        )
+    view_products_link.short_description = "المنتجات"
 
 #-------------------------------------------------------------------
 @admin.register(Branch)
@@ -7,11 +58,6 @@ class BranchAdmin(admin.ModelAdmin):
     list_display = ('id', 'name', 'address', 'phone')
     search_fields = ('name', 'address')
 
-
-@admin.register(Product)
-class ProductAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'price')
-    search_fields = ('name',)
 
 
 @admin.register(Inventory)
@@ -38,11 +84,6 @@ class ReservationAdmin(admin.ModelAdmin):
 class InventoryTransactionAdmin(admin.ModelAdmin):
     list_display = ('id', 'product', 'transaction_type', 'quantity', 'from_branch', 'to_branch', 'created_at')
     list_filter = ('transaction_type', 'from_branch', 'to_branch')
-#------------------
-@admin.register(Category)
-class CategoryAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name')
-    search_fields = ('name',)
 #-------------------------------------------------------------------
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):

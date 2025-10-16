@@ -1,5 +1,1 @@
-# 📞 CallCenter Inventory System (Django + Channels)
-
-## 🚀 Local Development
-```bash
-python manage.py runserver
+"# callcenter_inventory2" 

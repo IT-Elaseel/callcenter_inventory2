@@ -82,7 +82,6 @@ class UserCreateForm(forms.ModelForm):
         return user
 #-------------------------------------------------------------------------------------------------------
 from django.contrib.auth.forms import PasswordChangeForm
-
 class ArabicPasswordChangeForm(PasswordChangeForm):
     error_messages = {
         'password_incorrect': "❌ كلمة المرور الحالية غير صحيحة.",
@@ -97,7 +96,6 @@ class ArabicPasswordChangeForm(PasswordChangeForm):
 
 #-------------------------------------------------------------------------------------------------------
 from .models import Category, Product, Branch
-
 class CategoryForm(forms.ModelForm):
     class Meta:
         model = Category
@@ -106,19 +104,57 @@ class CategoryForm(forms.ModelForm):
             "name": forms.TextInput(attrs={"class": "form-control", "placeholder": "اسم القسم"}),
             "description": forms.Textarea(attrs={"class": "form-control", "placeholder": "الوصف", "rows": 2}),
         }
+#-------------------------------------------------------------------------------------------------------
+from django import forms
+from .models import Product, Category, SecondCategory
 
 class ProductForm(forms.ModelForm):
+    category = forms.ModelChoiceField(
+        queryset=Category.objects.all(),
+        label="القسم الرئيسي",
+        widget=forms.Select(attrs={"class": "form-select", "id": "mainCategory"})
+    )
+    second_category = forms.ModelChoiceField(
+        queryset=SecondCategory.objects.none(),
+        label="القسم الفرعي",
+        widget=forms.Select(attrs={"class": "form-select", "id": "subCategory"})
+    )
+
     class Meta:
         model = Product
-        fields = ["name", "description", "price", "unit", "category"]
+        fields = [
+            "name",
+            "description",
+            "price",
+            "unit",
+            "category",
+            "second_category",
+            "is_available",   # ✅ أضفناها هنا
+        ]
         widgets = {
             "name": forms.TextInput(attrs={"class": "form-control", "placeholder": "اسم المنتج"}),
             "description": forms.Textarea(attrs={"class": "form-control", "placeholder": "الوصف", "rows": 2}),
             "price": forms.NumberInput(attrs={"class": "form-control"}),
             "unit": forms.Select(attrs={"class": "form-select"}),
-            "category": forms.Select(attrs={"class": "form-select"}),
+            "is_available": forms.CheckboxInput(attrs={"class": "form-check-input"}),  # ✅ خانة التوفر
+        }
+        labels = {
+            "is_available": "متوفر؟",  # ✅ عنوان الحقل بالعربي
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # ✅ فلترة الأقسام الفرعية بناءً على القسم الرئيسي
+        if "category" in self.data:
+            try:
+                category_id = int(self.data.get("category"))
+                self.fields["second_category"].queryset = SecondCategory.objects.filter(main_category_id=category_id)
+            except (ValueError, TypeError):
+                pass
+        elif self.instance.pk and self.instance.category:
+            self.fields["second_category"].queryset = SecondCategory.objects.filter(main_category=self.instance.category)
+#-------------------------------------------------------------------------------------------------------
 class BranchForm(forms.ModelForm):
     class Meta:
         model = Branch

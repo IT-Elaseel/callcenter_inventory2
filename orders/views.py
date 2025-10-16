@@ -1,27 +1,44 @@
- # 📌 Python Standard Library
-from datetime import datetime
+# ==============================================
+# 📌 Python Standard Library
+# ==============================================
+from datetime import datetime, timedelta
+from urllib.parse import urlencode
+
+# ==============================================
 # 📌 Third-party Libraries
+# ==============================================
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+
+# ==============================================
 # 📌 Django Imports
+# ==============================================
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
+from django.contrib.auth import (authenticate, login, logout, update_session_auth_hash)
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.models import User
 from django.core.paginator import Paginator
-from django.db.models import Count, Q
-from django.http import HttpResponse, JsonResponse,HttpResponseForbidden
+from django.db.models import Q, Count
+from django.http import (HttpResponse, JsonResponse, HttpResponseForbidden)
 from django.shortcuts import render, redirect, get_object_or_404
+from django.template.loader import render_to_string
+from django.urls import reverse
 from django.utils import timezone
-from django.utils.timezone import now, timedelta
+from django.utils.timezone import now, localdate
+from django.views.decorators.http import require_POST
+
+# ==============================================
 # 📌 Local Application Imports
+# ==============================================
 from .decorators import role_required
-from .forms import CategoryForm, ProductForm, BranchForm, UserCreateForm, ArabicPasswordChangeForm
-from .models import Category, Product, Inventory, Reservation, Branch, Customer, InventoryTransaction,DailyRequest
+from .forms import (CategoryForm, ProductForm, BranchForm,UserCreateForm, ArabicPasswordChangeForm)
+from .models import (Category, Product, Inventory, Reservation,Branch, Customer, InventoryTransaction,DailyRequest, OrderCounter)
 #------------------------------التحقق من المستخدم ادمن اول لا-------------------------------------
 def is_admin(user):
     return (
@@ -712,6 +729,37 @@ def landing(request):
 #-------------------------------------------------------------------------------------------------------
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render, redirect
+from django.contrib import messages
+from django.http import JsonResponse
+from .decorators import role_required
+from .models import Product, Category, SecondCategory, StandardRequest, Inventory, InventoryTransaction
+
+def _get_worklist(request):
+    """
+    ترجع dict بالشكل: {product_id(str): qty(int)}
+    محفوظة في session تحت المفتاح 'inventory_worklist'
+    """
+    wl = request.session.get("inventory_worklist", {})
+    # تأكد كله ints
+    clean = {}
+    for k, v in wl.items():
+        try:
+            pid = str(int(k))
+            q = int(v)
+            if q > -1:
+                clean[pid] = q
+        except Exception:
+            continue
+    request.session["inventory_worklist"] = clean
+    request.session.modified = True
+    return clean
+
+def _save_worklist(request, wl_dict):
+    request.session["inventory_worklist"] = {str(k): int(v) for k, v in wl_dict.items() if int(v) > -1}
+    request.session.modified = True
+
 @login_required
 @role_required(["branch"])
 def update_inventory(request):
@@ -728,82 +776,309 @@ def update_inventory(request):
             status=403
         )
 
-    # 🟢 POST = تحديث الكمية
+    # القائمة المؤقتة (اللي هانشتغل عليها)
+    worklist = _get_worklist(request)
+
+    # الاستامبا (للعرض فقط لما تضغط تحميل)
+    stamp_items = None
+
+    # 🟢 POST = عمليات على القائمة/التطبيق على المخزون
     if request.method == "POST":
-        product_id = request.POST.get("product_id")
-        qty = request.POST.get("quantity")
 
-        if product_id and qty:
-            product = Product.objects.get(id=product_id)
-            qty = int(qty)
-            if qty < 1:
-                return JsonResponse({
-                    "success": False,
-                    "message": "❌ أقل كمية مسموح بها هي 1"
-                })
-            inventory, created = Inventory.objects.get_or_create(branch=branch, product=product)
-            inventory.quantity = qty
-            inventory.save()
-            channel_layer = get_channel_layer()
-            async_to_sync(channel_layer.group_send)(
-                "callcenter_updates",
-                {
-                    "type": "callcenter_update",
-                    "product_id": product.id,
-                    "branch_id": branch.id,
-                    "branch_name": branch.name,
-                    "new_qty": inventory.quantity,
-                    "message": f"📦 تم تحديث {product.name} في فرع {branch.name} إلى {inventory.quantity}",
-                }
-            )
-            InventoryTransaction.objects.create(
-                product=product,
-                from_branch=None,
-                to_branch=branch,
-                quantity=qty,
-                transaction_type="transfer_in",
-                added_by=request.user
-            )
+        # ✅ تحميل استامبا "تحديث المخزون" ودمجها في القائمة المؤقتة (من غير ما نعدل الاستامبا نفسها)
+        if "load_stamp" in request.POST:
+            stamp_qs = StandardRequest.objects.filter(
+                branch=branch,
+                stamp_type="inventory"
+            ).select_related("product")
+            if not stamp_qs.exists():
+                messages.warning(request, "⚠️ لا توجد استامبا لتحديث المخزون لهذا الفرع.")
+            else:
+                added = 0
+                for it in stamp_qs:
+                    pid = str(it.product_id)
+                    # لو موجود مسبقًا ما نكسرش تعديل المستخدم؛ خليه كما هو
+                    if pid not in worklist:
+                        worklist[pid] = int(it.default_quantity or 0)
+                        added += 1
+                _save_worklist(request, worklist)
+                messages.success(request, f"✅ تم تحميل استامبا تحديث المخزون ودمج {added} عنصر للقائمة.")
+            # نخلي stamp_items يتعرض فوق لو حبيت تُظهر الفرق
+            stamp_items = stamp_qs
 
-            # ✅ استجابة JSON عشان الـ Ajax
-            return JsonResponse({
-                "success": True,
-                "message": f"✅ تمت إضافة {qty} لـ {product.name}. الكمية الجديدة: {inventory.quantity}",
-                "new_qty": inventory.quantity
-            })
+        # ➕ إضافة منتج من الشبكة السفلية إلى القائمة
+        elif "add_item" in request.POST:
+            product_id = request.POST.get("product")
+            qty = request.POST.get("quantity", "1")
+            try:
+                pid = str(int(product_id))
+                q = int(qty)
+                if q < 0:
+                    q = 0
+                # لو العنصر موجود نزود الكمية، لو تحب الاستبدال بدّل السطر اللي تحت:
+                worklist[pid] = worklist.get(pid, 0) + q
+                _save_worklist(request, worklist)
+                pr_name = Product.objects.get(id=int(pid)).name
+                messages.success(request, f"✅ تم إضافة {pr_name} ({q}).")
+            except Exception:
+                messages.error(request, "❌ بيانات غير صحيحة للإضافة.")
+            return redirect("update_inventory")
 
-        return JsonResponse({"success": False, "message": "❌ بيانات غير صحيحة"})
+        # ✏️ تعديل كمية عنصر واحد داخل الجدول
+        elif "update_item" in request.POST:
+            rid = request.POST.get("request_id")  # هنا هي product_id
+            new_qty = request.POST.get("new_quantity")
+            try:
+                pid = str(int(rid))
+                q = int(new_qty)
+                if q < 0:
+                    q = 0
+                if pid in worklist:
+                    worklist[pid] = q
+                    _save_worklist(request, worklist)
+                    messages.success(request, "✅ تم تحديث الكمية.")
+            except Exception:
+                messages.error(request, "❌ لم يتم تحديث الكمية.")
+            return redirect("update_inventory")
+
+        # 🗑️ حذف عنصر واحد
+        elif "delete_item" in request.POST:
+            rid = request.POST.get("request_id")  # هنا هي product_id
+            try:
+                pid = str(int(rid))
+                if pid in worklist:
+                    worklist.pop(pid, None)
+                    _save_worklist(request, worklist)
+                    messages.success(request, "🗑️ تم حذف المنتج من القائمة.")
+            except Exception:
+                pass
+            return redirect("update_inventory")
+
+        # 🗑️ حذف المحدد
+        elif "delete_selected" in request.POST:
+            selected_ids = request.POST.getlist("selected_items")
+            removed = 0
+            for sid in selected_ids:
+                pid = str(sid)
+                if pid in worklist:
+                    worklist.pop(pid, None)
+                    removed += 1
+            _save_worklist(request, worklist)
+            messages.success(request, f"🗑️ تم حذف {removed} منتج/منتجات من القائمة.")
+            return redirect("update_inventory")
+
+        # 🗑️ حذف الكل
+        elif "delete_all" in request.POST:
+            worklist.clear()
+            _save_worklist(request, worklist)
+            messages.success(request, "🗑️ تم تفريغ القائمة بالكامل.")
+            return redirect("update_inventory")
+
+        # 💾 تحديث الكل (تطبيق القائمة المؤقتة على جدول Inventory فقط)
+        elif "update_stamp" in request.POST:
+            # لو المستخدم عدّل القيم في الجدول قبل الضغط تحديث الكل، التقطها
+            # الفورم بيبعتها بالشكل quantities[PRODUCT_ID]
+            for key, val in request.POST.items():
+                if key.startswith("quantities[") and key.endswith("]"):
+                    try:
+                        pid = key[len("quantities["):-1]
+                        q = int(val)
+                        if q < 0:
+                            q = 0
+                        if pid in worklist:
+                            worklist[pid] = q
+                    except Exception:
+                        continue
+            _save_worklist(request, worklist)
+
+            updated = 0
+            for pid, qty in worklist.items():
+                try:
+                    product = Product.objects.get(id=int(pid))
+                    inv, _ = Inventory.objects.get_or_create(branch=branch, product=product)
+                    inv.quantity = int(qty)
+                    inv.save()
+
+                    # 🔔 إشعار لحظي
+                    channel_layer = get_channel_layer()
+                    async_to_sync(channel_layer.group_send)(
+                        "callcenter_updates",
+                        {
+                            "type": "callcenter_update",
+                            "product_id": product.id,
+                            "branch_id": branch.id,
+                            "branch_name": branch.name,
+                            "new_qty": inv.quantity,
+                            "message": f"📦 تم تحديث {product.name} في فرع {branch.name} إلى {inv.quantity}",
+                        }
+                    )
+
+                    # سجل حركة
+                    InventoryTransaction.objects.create(
+                        product=product,
+                        from_branch=None,
+                        to_branch=branch,
+                        quantity=int(qty),
+                        transaction_type="transfer_in",
+                        added_by=request.user
+                    )
+                    updated += 1
+                except Exception:
+                    continue
+
+            messages.success(request, f"✅ تم تحديث الكميات لعدد {updated} منتج.")
+            # نفضل مخلّين القائمة كما هي عشان يقدر يكمّل تعديلات إن حب
+            return redirect("update_inventory")
+
+        # (اختياري) لو فيه أي طلبات غير معروفة
+        else:
+            return JsonResponse({"success": False, "message": "❌ طلب غير معروف"})
 
     # 🟢 GET = عرض الصفحة
     categories = Category.objects.all()
     selected_category = request.GET.get("category")
 
-    if selected_category == "":  # اختار "كل الأقسام"
+    if selected_category == "":
         request.session["selected_category"] = None
         selected_category = None
-    elif selected_category is not None:  # اختار قسم معين
+    elif selected_category is not None:
         request.session["selected_category"] = selected_category
-    else:  # مفيش باراميتر في GET → استرجع من السيشن
+    else:
         selected_category = request.session.get("selected_category")
 
-    products = Product.objects.all()
+    products = Product.objects.filter(is_available=True)
     if selected_category:
         products = products.filter(category_id=selected_category)
 
     inventories = Inventory.objects.filter(branch=branch).select_related("product")
+    second_categories = SecondCategory.objects.all()
+
+    # جهّز العناصر المعروضة في الجدول (من worklist)
+    work_items = []
+    if worklist:
+        # هنجلب المنتجات ب一次
+        plist = Product.objects.filter(id__in=[int(k) for k in worklist.keys()]).select_related("category")
+        prod_map = {str(p.id): p for p in plist}
+        for pid, qty in worklist.items():
+            p = prod_map.get(str(pid))
+            if p:
+                work_items.append({
+                    "product": p,
+                    "quantity": qty,
+                })
 
     return render(
         request,
         "orders/update_inventory.html",
         {
             "categories": categories,
+            "second_categories": second_categories,
             "selected_category": int(selected_category) if selected_category else None,
             "products": products,
             "inventories": inventories,
-             "branch": branch,   # 👈 أضفت الفرع هنا
+            "branch": branch,
+            "stamp_items": stamp_items,   # للعرض فقط عند التحميل (اختياري)
+            "work_items": work_items,     # القائمة الفعلية اللي بنعدل فيها ونطبّق منها
         },
     )
+#-------------------------------------------------------------------------------------------------------
+from django.utils import timezone
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from .decorators import role_required
+from django.shortcuts import render, redirect
+from .models import Product, Category, SecondCategory, StandardRequest
 
+@login_required
+@role_required(["branch"])
+def set_inventory_stamp(request):
+    profile = getattr(request.user, "userprofile", None)
+    branch = profile.branch if profile else None
+
+    if not branch:
+        return render(
+            request,
+            "orders/no_permission.html",
+            {"error_message": "🚫 لا يوجد فرع مربوط بحسابك."},
+            status=403
+        )
+
+    selected_category = request.session.get("selected_category")
+
+    # 🟢 POST
+    if request.method == "POST":
+        # ➕ إضافة منتج
+        if "add_item" in request.POST:
+            product_id = request.POST.get("product")
+            qty = int(request.POST.get("quantity", 1))
+
+            if product_id and qty > 0:
+                product = Product.objects.get(id=product_id)
+                StandardRequest.objects.update_or_create(
+                    branch=branch,
+                    product=product,
+                    stamp_type="inventory",  # 👈 النوع ده خاص بتحديث المخزون
+                    defaults={
+                        "default_quantity": qty,
+                        "updated_at": timezone.now(),
+                    }
+                )
+                messages.success(request, f"✅ تمت إضافة {product.name} للاستامبا بكمية {qty}.")
+            return redirect("set_inventory_stamp")
+
+        # ✏️ تعديل كمية منتج
+        elif "update_item" in request.POST:
+            std_id = request.POST.get("update_item")
+            new_qty = request.POST.get(f"quantities[{std_id}]")
+            if std_id and new_qty:
+                try:
+                    sr = StandardRequest.objects.get(id=std_id, branch=branch, stamp_type="inventory")
+                    sr.default_quantity = int(new_qty)
+                    sr.save()
+                    messages.success(request, f"✏️ تم تحديث {sr.product.name} إلى {new_qty}.")
+                except StandardRequest.DoesNotExist:
+                    pass
+            return redirect("set_inventory_stamp")
+
+        # 🗑️ حذف منتج واحد
+        elif "delete_item" in request.POST:
+            std_id = request.POST.get("delete_item")
+            if std_id:
+                StandardRequest.objects.filter(id=std_id, branch=branch, stamp_type="inventory").delete()
+                messages.success(request, "🗑️ تم حذف المنتج بنجاح.")
+            return redirect("set_inventory_stamp")
+
+        # 🗑️ حذف الكل
+        elif "delete_all" in request.POST:
+            StandardRequest.objects.filter(branch=branch, stamp_type="inventory").delete()
+            messages.success(request, "🗑️ تم حذف جميع المنتجات من استامبا تحديث المخزون.")
+            return redirect("set_inventory_stamp")
+
+        # 🗑️ حذف المحدد فقط
+        elif "delete_selected" in request.POST:
+            selected_ids = request.POST.getlist("selected_items")
+            if selected_ids:
+                StandardRequest.objects.filter(id__in=selected_ids, branch=branch, stamp_type="inventory").delete()
+                messages.success(request, "🗑️ تم حذف المنتجات المحددة بنجاح.")
+            return redirect("set_inventory_stamp")
+
+    # 🧩 البيانات
+    products = Product.objects.filter(is_available=True)
+    categories = Category.objects.all()
+    second_categories = SecondCategory.objects.all()
+    inventory_stamps = StandardRequest.objects.filter(
+        branch=branch,
+        stamp_type="inventory"
+    ).select_related("product__category").order_by("product__category__name", "product__name")
+
+    return render(request, "orders/set_inventory_stamp.html", {
+        "products": products,
+        "categories": categories,
+        "second_categories": second_categories,
+        "requests_today": inventory_stamps,  # نفس الاسم عشان الـ HTML يشتغل زي الطلبية
+        "selected_category": selected_category,
+        "page_title": "استامبا تحديث المخزون"
+    })
 #-------------------------------------------------------------------------------------------------------
 @login_required
 @role_required(["branch", "admin"])
@@ -1095,26 +1370,32 @@ def manage_data(request):
 
     success_message = None
 
-    # دايمًا اعمل تعريف أولي للفورمات
+    # ✅ تعريف الفورمات
     cat_form = CategoryForm(prefix="cat")
-    prod_form = ProductForm(prefix="prod")
+    prod_form = ProductForm()  # 🔸 بدون prefix علشان البيانات تتربط صح
     branch_form = BranchForm(prefix="branch")
 
     if request.method == "POST":
+        # 🔹 إضافة قسم
         if "add_category" in request.POST:
             cat_form = CategoryForm(request.POST, prefix="cat")
             if cat_form.is_valid():
                 cat_form.save()
                 success_message = "✅ تم إضافة القسم بنجاح"
-                cat_form = CategoryForm(prefix="cat")  # reset
+                cat_form = CategoryForm(prefix="cat")  # reset بعد الحفظ
 
+        # 🔹 إضافة منتج
         elif "add_product" in request.POST:
-            prod_form = ProductForm(request.POST, prefix="prod")
+            prod_form = ProductForm(request.POST)
             if prod_form.is_valid():
                 prod_form.save()
                 success_message = "✅ تم إضافة المنتج بنجاح"
-                prod_form = ProductForm(prefix="prod")
+                prod_form = ProductForm()  # ✅ تفريغ الفورم بعد الحفظ
+            else:
+                # 🧩 لو في أخطاء خفية هتظهر في التيرمنال
+                print("❌ أخطاء الفورم:", prod_form.errors)
 
+        # 🔹 إضافة فرع
         elif "add_branch" in request.POST:
             branch_form = BranchForm(request.POST, prefix="branch")
             if branch_form.is_valid():
@@ -1132,11 +1413,6 @@ def manage_data(request):
         "success_message": success_message,
     })
 #-------------------------------------------------------------------------------------------------------
-from django.utils import timezone
-from django.conf import settings
-from django.shortcuts import render, redirect
-from django.contrib.auth.decorators import login_required, user_passes_test
-
 @login_required
 @user_passes_test(is_admin)
 def manage_users(request):
@@ -1177,9 +1453,6 @@ def manage_users(request):
         "role": role,
     })
 #-------------------------------------------------------------------------------------------------------
-from django.urls import reverse
-from urllib.parse import urlencode
-
 @login_required
 @user_passes_test(is_admin)
 def edit_category(request, pk):
@@ -1206,9 +1479,6 @@ def edit_category(request, pk):
         "redirect_url": reverse("view_data") + query_string,
     })
 #-------------------------------------------------------------------------------------------------------
-from django.urls import reverse
-from urllib.parse import urlencode
-
 @login_required
 @user_passes_test(is_admin)
 def edit_product(request, pk):
@@ -1235,9 +1505,6 @@ def edit_product(request, pk):
         "redirect_url": reverse("view_data") + query_string,
     })
 #-------------------------------------------------------------------------------------------------------
-from django.urls import reverse
-from urllib.parse import urlencode
-
 @login_required
 @user_passes_test(is_admin)
 def edit_branch(request, pk):
@@ -1263,70 +1530,109 @@ def edit_branch(request, pk):
         "redirect_url": reverse("view_data") + query_string,
     })
 #-------------------------------------------------------------------------------------------------------
+from django.contrib.auth.decorators import login_required, user_passes_test
+from django.shortcuts import render
+from .models import Category, Product, Branch, SecondCategory
 @login_required
 @user_passes_test(is_admin)
 def view_data(request):
     selected_table = request.GET.get("table", "categories")
     query = request.GET.get("q", "")
-    selected_category = request.GET.get("category", "")  # ✅ نقرأ القسم المختار
+    selected_category = request.GET.get("category", "")        # القسم الرئيسي
+    selected_subcategory = request.GET.get("subcategory", "")  # القسم الفرعي
+    availability = request.GET.get("availability", "available")  # ✅ فلتر التوفر
     success_message = None
 
-    # ✅ حذف
+    # ✅ حذف العناصر
     if request.method == "POST":
         if "delete_category" in request.POST:
             Category.objects.filter(id=request.POST.get("delete_category")).delete()
-            success_message = "❌ تم حذف القسم بنجاح"
         elif "delete_product" in request.POST:
             Product.objects.filter(id=request.POST.get("delete_product")).delete()
-            success_message = "❌ تم حذف المنتج بنجاح"
         elif "delete_branch" in request.POST:
             Branch.objects.filter(id=request.POST.get("delete_branch")).delete()
-            success_message = "❌ تم حذف الفرع بنجاح"
 
+    # ✅ البيانات الأساسية
     categories = Category.objects.all()
-    products = Product.objects.all()
+    second_categories = SecondCategory.objects.all()
     branches = Branch.objects.all()
 
-    # ✅ فلترة المنتجات
+    # ✅ المنتجات — نبدأ بالكل ثم نفلتر حسب التوفر
+    products = Product.objects.all().select_related("category", "second_category")
+
+    # 🔽 فلترة حسب التوفر
+    if availability == "available":
+        products = products.filter(is_available=True)
+    elif availability == "unavailable":
+        products = products.filter(is_available=False)
+    # else → الكل
+
+    # 🔽 فلترة المنتجات حسب البحث والأقسام
     if selected_table == "products":
         if query:
             products = products.filter(name__icontains=query)
         if selected_category:
             products = products.filter(category_id=selected_category)
+        if selected_subcategory:
+            products = products.filter(second_category_id=selected_subcategory)
 
+    # ✅ تمرير البيانات للقالب
     return render(request, "orders/view_data.html", {
         "categories": categories,
-        "products": products,
+        "second_categories": second_categories,
         "branches": branches,
+        "products": products,
         "selected_table": selected_table,
         "query": query,
         "selected_category": selected_category,
+        "selected_subcategory": selected_subcategory,
+        "availability": availability,   # ✅ مهم عشان نستخدمه في HTML
         "success_message": success_message,
     })
 #-------------------------------------------------------------------------------------------------------
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import render, redirect
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
+
+@require_POST
+@login_required
+@user_passes_test(is_admin)
+def toggle_product_availability(request, pk):
+    """تبديل حالة التوفر لمنتج"""
+    try:
+        product = Product.objects.get(pk=pk)
+        product.is_available = not product.is_available
+        product.save()
+        return JsonResponse({"success": True, "new_status": product.is_available})
+    except Product.DoesNotExist:
+        return JsonResponse({"success": False, "error": "المنتج غير موجود"})
+#-------------------------------------------------------------------------------------------------------
+from django.http import JsonResponse
+from .models import SecondCategory
+
+def get_subcategories(request):
+    main_id = request.GET.get("main_id")
+    subcategories = SecondCategory.objects.filter(main_category_id=main_id).values("id", "name")
+    return JsonResponse(list(subcategories), safe=False)
+#-------------------------------------------------------------------------------------------------------
+from .models import Product, Category, SecondCategory, DailyRequest, StandardRequest
 from django.utils import timezone
-from .models import DailyRequest, Product, OrderCounter
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
+
 @login_required
 def add_daily_request(request):
     profile2 = getattr(request.user, "userprofile", None)
 
-    # 🚫 لو مش كنترول او ادمن
     if not profile2 or profile2.role not in ["branch"]:
         return render(
             request,
             "orders/no_permission.html",
-            {
-                "error_message": "🚫 غير مسموح لك بدخول هذه الصفحة. من فضلك تواصل مع مدير النظام لو محتاج صلاحية."
-            },
+            {"error_message": "🚫 غير مسموح لك بدخول هذه الصفحة."},
             status=403
         )
-    branch = request.user.userprofile.branch
 
-    # 🔑 رقم الطلبية مؤقت مخزن في السيشن
+    branch = profile2.branch
+
     order_number = request.session.get("current_order_number")
     if not order_number:
         counter, _ = OrderCounter.objects.get_or_create(id=1)
@@ -1335,19 +1641,36 @@ def add_daily_request(request):
         order_number = str(counter.current_number)
         request.session["current_order_number"] = order_number
 
-    # 🟢 رجّع القسم المختار (لو موجود في السيشن)
     selected_category = request.session.get("selected_category")
 
+    # 🟢 POST actions
     if request.method == "POST":
-        if "add_item" in request.POST:
-            # ➕ إضافة منتج جديد (أو زيادة الكمية لو موجود قبل كده)
+        # 🔹 تحميل الطلبية القياسية
+        if "load_standard" in request.POST:
+            # ✅ تعديل بسيط هنا عشان يجيب استامبا الطلبية فقط
+            standard_items = StandardRequest.objects.filter(branch=branch, stamp_type="order")
+            for item in standard_items:
+                DailyRequest.objects.get_or_create(
+                    branch=branch,
+                    product=item.product,
+                    category=item.product.category,
+                    order_number=order_number,
+                    is_confirmed=False,
+                    defaults={
+                        "quantity": item.default_quantity,
+                        "created_by": request.user,
+                    }
+                )
+            messages.success(request, "✅ تم تحميل الطلبية القياسية لهذا الفرع.")
+            return redirect("add_daily_request")
+
+        # ➕ إضافة منتج
+        elif "add_item" in request.POST:
             category_id = request.POST.get("category")
             product_id = request.POST.get("product")
             qty = int(request.POST.get("quantity", 1))
-
             if product_id and qty > 0:
                 try:
-                    # لو المنتج موجود بنفس الطلبية → زود الكمية
                     dr = DailyRequest.objects.get(
                         branch=branch,
                         category_id=category_id,
@@ -1358,7 +1681,6 @@ def add_daily_request(request):
                     dr.quantity += qty
                     dr.save()
                 except DailyRequest.DoesNotExist:
-                    # لو مش موجود → أضف صف جديد
                     DailyRequest.objects.create(
                         branch=branch,
                         category_id=category_id,
@@ -1368,14 +1690,10 @@ def add_daily_request(request):
                         order_number=order_number,
                         is_confirmed=False
                     )
-
-            # ✅ خزّن القسم المختار في السيشن عشان يفضل بعد الريدايركت
             request.session["selected_category"] = category_id
-
             return redirect("add_daily_request")
 
         elif "update_item" in request.POST:
-            # ✏️ تعديل الكمية
             req_id = request.POST.get("request_id")
             new_qty = request.POST.get("new_quantity")
             if req_id and new_qty:
@@ -1393,7 +1711,6 @@ def add_daily_request(request):
             return redirect("add_daily_request")
 
         elif "delete_item" in request.POST:
-            # 🗑️ حذف المنتج
             req_id = request.POST.get("request_id")
             if req_id:
                 DailyRequest.objects.filter(
@@ -1404,18 +1721,38 @@ def add_daily_request(request):
                 ).delete()
             return redirect("add_daily_request")
 
+        # 🔹 حذف المحدد
+        elif "delete_selected" in request.POST:
+            selected_ids = request.POST.getlist("selected_items")
+            if selected_ids:
+                DailyRequest.objects.filter(
+                    id__in=selected_ids,
+                    branch=branch,
+                    order_number=order_number,
+                    is_confirmed=False
+                ).delete()
+                messages.success(request, f"🗑️ تم حذف {len(selected_ids)} عنصر بنجاح.")
+            else:
+                messages.warning(request, "⚠️ لم يتم تحديد أي عنصر للحذف.")
+            return redirect("add_daily_request")
+
+        # 🔹 حذف الكل
+        elif "delete_all" in request.POST:
+            DailyRequest.objects.filter(
+                branch=branch,
+                order_number=order_number,
+                is_confirmed=False
+            ).delete()
+            messages.success(request, "🚮 تم حذف جميع العناصر من الطلبية الحالية.")
+            return redirect("add_daily_request")
+
         elif "confirm_order" in request.POST:
-            # ✅ تأكيد الطلبية
             now = timezone.now()
             DailyRequest.objects.filter(
                 order_number=order_number,
                 branch=branch
-            ).update(
-                is_confirmed=True,
-                confirmed_at=now
-            )
+            ).update(is_confirmed=True, confirmed_at=now)
 
-            # 🧩 إرسال تحديث لحظي للكنترول
             layer = get_channel_layer()
             async_to_sync(layer.group_send)(
                 "control_updates",
@@ -1426,37 +1763,124 @@ def add_daily_request(request):
                     "order_number": order_number,
                 }
             )
-
-            # 🧹 امسح رقم الطلبية و القسم بعد التأكيد
             request.session["current_order_number"] = None
             request.session["selected_category"] = None
             return redirect("add_daily_request")
 
-
-    # البيانات للـ HTML
-    products = Product.objects.all()
+    # 🧩 البيانات
+    products = Product.objects.filter(is_available=True)
     categories = Category.objects.all()
+    second_categories = SecondCategory.objects.all()
     requests_today = DailyRequest.objects.filter(
         order_number=order_number,
         branch=branch,
         is_confirmed=False
-    )
+        ).select_related("product__category").order_by("product__category__name", "product__name")
 
     return render(request, "orders/add_daily_request.html", {
         "products": products,
         "categories": categories,
+        "second_categories": second_categories,
         "requests_today": requests_today,
         "order_number": order_number,
-        "selected_category": selected_category,  # ✅ بيرجع القسم للـ HTML
+        "selected_category": selected_category,
     })
 
+#----------------------------------------------------------------
+from django.contrib import messages
+from .models import Product, Category, SecondCategory, StandardRequest
+from django.utils import timezone
 
-#-------------------------------------------------------------------------------------------------------
-from django.contrib.auth.decorators import login_required, user_passes_test
-from django.utils.timezone import localdate, now
-from django.shortcuts import render, redirect
-from .models import DailyRequest, Branch
+@login_required
+@role_required(["branch"])
+def set_standard_request(request):
+    profile = getattr(request.user, "userprofile", None)
+    branch = profile.branch if profile else None
 
+    if not branch:
+        return render(
+            request,
+            "orders/no_permission.html",
+            {"error_message": "🚫 لا يوجد فرع مربوط بحسابك."},
+            status=403
+        )
+
+    selected_category = request.session.get("selected_category")
+
+    if request.method == "POST":
+        # ➕ إضافة منتج جديد
+        if "add_item" in request.POST:
+            category_id = request.POST.get("category")
+            product_id = request.POST.get("product")
+            qty = int(request.POST.get("quantity", 1))
+
+            if product_id and qty > 0:
+                product = Product.objects.get(id=product_id)
+                StandardRequest.objects.update_or_create(
+                    branch=branch,
+                    product=product,
+                    stamp_type="order",
+                    defaults={
+                        "default_quantity": qty,
+                        "updated_at": timezone.now()
+                    }
+                )
+                messages.success(request, f"✅ تمت إضافة {product.name} بكمية {qty} للطلبية القياسية.")
+            return redirect("set_standard_request")
+
+        # ✏️ تحديث كمية منتج واحد
+        elif "update_item" in request.POST:
+            std_id = request.POST.get("request_id")
+            new_qty = request.POST.get("new_quantity")
+            if std_id and new_qty:
+                try:
+                    sr = StandardRequest.objects.get(id=std_id, branch=branch, stamp_type="order")
+                    sr.default_quantity = int(new_qty)
+                    sr.save()
+                except StandardRequest.DoesNotExist:
+                    pass
+            return redirect("set_standard_request")
+
+        # 🗑️ حذف منتج واحد
+        elif "delete_item" in request.POST:
+            std_id = request.POST.get("request_id")
+            if std_id:
+                StandardRequest.objects.filter(id=std_id, branch=branch, stamp_type="order").delete()
+            return redirect("set_standard_request")
+
+        # 🗑️ حذف المحدد
+        elif "delete_selected" in request.POST:
+            selected_ids = request.POST.getlist("selected_items")
+            if selected_ids:
+                StandardRequest.objects.filter(id__in=selected_ids, branch=branch, stamp_type="order").delete()
+                messages.success(request, "🗑️ تم حذف العناصر المحددة بنجاح.")
+            else:
+                messages.warning(request, "⚠️ لم يتم تحديد أي عنصر.")
+            return redirect("set_standard_request")
+
+        # ❌ حذف الكل
+        elif "delete_all" in request.POST:
+            StandardRequest.objects.filter(branch=branch, stamp_type="order").delete()
+            messages.success(request, "❌ تم حذف جميع العناصر من الطلبية القياسية.")
+            return redirect("set_standard_request")
+
+    # 🧩 البيانات
+    products = Product.objects.filter(is_available=True)
+    categories = Category.objects.all()
+    second_categories = SecondCategory.objects.all()
+    standard_items = StandardRequest.objects.filter(
+        branch=branch, stamp_type="order"
+    ).select_related("product__category").order_by("product__category__name", "product__name")
+
+    return render(request, "orders/set_standard_request.html", {
+        "products": products,
+        "categories": categories,
+        "second_categories": second_categories,
+        "requests_today": standard_items,
+        "selected_category": selected_category,
+        "page_title": "الطلبية القياسية"
+    })
+#----------------------------------------------------------------
 @login_required
 def control_requests(request):
     profile = getattr(request.user, "userprofile", None)
@@ -1506,9 +1930,6 @@ def control_requests(request):
         "printed_filter": printed_filter,
     })
 #-------------------------sockets-------------------------------------------------------------------------
-from django.http import JsonResponse
-from django.template.loader import render_to_string
-
 @login_required
 def control_requests_data(request):
     """ترجع HTML الطلبات فقط لتحديث الصفحة عبر AJAX"""
@@ -1540,13 +1961,6 @@ def control_requests_data(request):
 
     return JsonResponse({"html": html})
 #-------------------------------------------------------------------------------------------------------
-from django.utils import timezone
-from django.shortcuts import redirect
-from django.views.decorators.http import require_POST
-from django.http import JsonResponse
-from channels.layers import get_channel_layer
-from asgiref.sync import async_to_sync
-
 @require_POST
 @login_required
 def mark_printed(request, order_number):
@@ -1571,11 +1985,6 @@ def mark_printed(request, order_number):
 
     return JsonResponse({"status": "ok"})
 #-------------------------------------------------------------------------------------------------------
-from django.contrib.auth.decorators import login_required
-from django.utils.timezone import localdate
-from django.shortcuts import render
-from .models import DailyRequest
-
 @login_required
 def branch_requests(request):
     profile = getattr(request.user, "userprofile", None)
@@ -1626,3 +2035,134 @@ def branch_requests(request):
         "printed_filter": printed_filter,
         "branch": branch,
     })
+#-----------------------------------------------------
+from decimal import Decimal, InvalidOperation
+import openpyxl
+from django.contrib import messages
+from django.shortcuts import redirect, render
+from django.contrib.auth.decorators import login_required
+from .models import Product, Category, SecondCategory
+from .decorators import role_required
+
+
+@login_required
+@role_required(["admin"])
+def import_products(request):
+    if request.method == "POST" and request.FILES.get("excel_file"):
+        excel_file = request.FILES["excel_file"]
+        try:
+            wb = openpyxl.load_workbook(excel_file)
+            sheet = wb.active
+
+            # ✅ الأعمدة المطلوبة
+            expected_headers = [
+                "name", "price", "category_name", "second_category_name", "unit", "Is Show"
+            ]
+            headers = [str(cell.value).strip() if cell.value else "" for cell in sheet[1]]
+
+            required_headers = ["name", "price", "category_name", "second_category_name"]
+            if any(h not in headers for h in required_headers):
+                messages.error(
+                    request,
+                    "❌ ملف Excel غير صحيح، يجب أن يحتوي على الأعمدة التالية على الأقل:\n"
+                    "name, price, category_name, second_category_name"
+                )
+                return redirect("import_products")
+
+            header_index = {h: headers.index(h) for h in headers if h in expected_headers}
+            count = 0
+            hidden_count = 0
+            visible_count = 0
+
+            for row in sheet.iter_rows(min_row=2, values_only=True):
+                name = row[header_index["name"]] if "name" in header_index else None
+                price = row[header_index["price"]] if "price" in header_index else None
+                category_name = row[header_index["category_name"]] if "category_name" in header_index else None
+                second_category_name = row[header_index["second_category_name"]] if "second_category_name" in header_index else None
+                unit_value = row[header_index["unit"]] if "unit" in header_index else None
+                is_show_value = row[header_index["Is Show"]] if "Is Show" in header_index else None
+
+                if not name:
+                    continue
+
+                # 🔹 السعر
+                try:
+                    price_value = Decimal(str(price)) if price is not None else Decimal("0.0")
+                except (InvalidOperation, TypeError, ValueError):
+                    price_value = Decimal("0.0")
+
+                # 🔹 الكاتيجوري الرئيسي
+                category = None
+                if category_name:
+                    category, _ = Category.objects.get_or_create(name=str(category_name).strip())
+
+                # 🔹 الكاتيجوري الفرعي
+                second_category = None
+                if second_category_name and category:
+                    second_category, _ = SecondCategory.objects.get_or_create(
+                        name=str(second_category_name).strip(),
+                        main_category=category
+                    )
+
+                # 🔹 الوحدة
+                unit_value = str(unit_value).strip().lower() if unit_value else "piece"
+                if unit_value not in ["piece", "kg"]:
+                    unit_value = "piece"
+
+                # 🔹 Is Show (عمود الإكسيل)
+                is_shwo_clean = None
+                is_available = True  # الافتراضي
+
+                if isinstance(is_show_value, str):
+                    is_show_value = is_show_value.strip().lower()
+
+                if is_show_value in [True, "true", "yes", "1"]:
+                    is_shwo_clean = True
+                    is_available = False   # ⬅️ العكس
+                    hidden_count += 1
+                elif is_show_value in [False, "false", "no", "0"]:
+                    is_shwo_clean = False
+                    is_available = True    # ⬅️ العكس
+                    visible_count += 1
+                else:
+                    is_shwo_clean = None
+                    is_available = True
+                    visible_count += 1
+
+                # 🔹 إنشاء أو تحديث المنتج
+                product, created = Product.objects.get_or_create(
+                    name=str(name).strip(),
+                    defaults={
+                        "price": price_value,
+                        "category": category,
+                        "second_category": second_category,
+                        "unit": unit_value,
+                        "is_available": is_available,
+                        "is_shwo": is_shwo_clean,
+                    }
+                )
+
+                if not created:
+                    product.price = price_value
+                    product.category = category
+                    product.second_category = second_category
+                    product.unit = unit_value
+                    product.is_available = is_available
+                    product.is_shwo = is_shwo_clean
+                    product.save()
+
+                count += 1
+
+            messages.success(
+                request,
+                f"✅ تم استيراد أو تحديث {count} منتج.\n"
+                f"📦 المعروضة: {visible_count}, 🚫 المخفية: {hidden_count}"
+            )
+            return redirect("import_products")
+
+        except Exception as e:
+            messages.error(request, f"⚠️ حدث خطأ أثناء قراءة الملف: {e}")
+            return redirect("import_products")
+
+    # 📄 GET → عرض الصفحة
+    return render(request, "orders/import_products.html")

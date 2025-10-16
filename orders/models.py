@@ -23,11 +23,19 @@ class Product(models.Model):
         null=True,
         blank=True
     )
+    second_category = models.ForeignKey(
+        'SecondCategory',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="products"
+    )
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     price = models.DecimalField(max_digits=10, decimal_places=2)
-    updated_at = models.DateTimeField(auto_now=True)  # ✅ يتحدث تلقائي عند أي تعديل
-
+    updated_at = models.DateTimeField(auto_now=True)
+    is_available = models.BooleanField(default=True, verbose_name="متوفر")  # ✅ الجديد
+    is_shwo = models.BooleanField(blank=True, null=True, verbose_name="Is Show")  # ✅ الحقل الجديد
 
     UNIT_CHOICES = [
         ("piece", "عدد"),
@@ -35,11 +43,12 @@ class Product(models.Model):
         ("service", "سرفيز"),
         ("tray", "صاج"),
     ]
-    unit = models.CharField(max_length=20, choices=UNIT_CHOICES, default="piece") # 👈 الحقل الجديد
+    unit = models.CharField(max_length=20, choices=UNIT_CHOICES, default="piece")
 
     def __str__(self):
-        return f"{self.name} ({self.category.name if self.category else 'No Category'})"
-
+        main_cat = self.category.name if self.category else 'No Category'
+        sub_cat = self.second_category.name if self.second_category else 'No Subcategory'
+        return f"{self.name} ({main_cat} / {sub_cat})"
 #-------------------------------------
 class Branch(models.Model):
     name = models.CharField(max_length=100)
@@ -220,3 +229,36 @@ class OrderCounter(models.Model):
 
     def __str__(self):
         return f"Current Order Number: {self.current_number}"
+#-------------------------------------------------------------------------------------------------------
+class SecondCategory(models.Model):
+    main_category = models.ForeignKey(
+        Category,
+        on_delete=models.CASCADE,
+        related_name="subcategories"
+    )
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.main_category.name})"
+#-------------------------------------------------------------------------------------------------------
+class StandardRequest(models.Model):
+    STAMP_TYPES = [
+        ("order", "طلبية قياسية"),
+        ("inventory", "تحديث مخزون"),
+    ]
+
+    branch = models.ForeignKey("orders.Branch", on_delete=models.CASCADE, related_name="standard_requests")
+    product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    default_quantity = models.PositiveIntegerField(default=1)
+    stamp_type = models.CharField(max_length=20, choices=STAMP_TYPES, default="order")  # 👈 جديد
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("branch", "product", "stamp_type")  # 👈 علشان كل نوع مستقل
+
+    def __str__(self):
+        return f"{self.branch.name} - {self.get_stamp_type_display()} - {self.product.name} ({self.default_quantity})"
+#---------------------------------------------------------------------------------------------

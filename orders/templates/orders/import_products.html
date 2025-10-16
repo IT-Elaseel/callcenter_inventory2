@@ -1,0 +1,44 @@
+{% extends "orders/base.html" %}
+
+{% block content %}
+<div style="direction: rtl; text-align: center; margin-top: 60px;">
+    <div style="
+        background: white;
+        display: inline-block;
+        padding: 30px;
+        border-radius: 10px;
+        box-shadow: 0 0 10px #ccc;
+        width: 450px;
+        ">
+
+        <h2>📦 استيراد المنتجات من Excel</h2>
+
+        {% for message in messages %}
+            <p style="color:{% if message.tags == 'error' %}red{% else %}green{% endif %}; font-weight:bold;">
+                {{ message }}
+            </p>
+        {% endfor %}
+
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            <input type="file" name="excel_file" accept=".xlsx" required
+                   style="margin: 15px 0; padding: 8px; width: 90%; border: 1px solid #ddd; border-radius: 5px;"><br>
+
+            <button type="submit"
+                    style="padding: 10px 20px; background: #007bff; border: none; color: white; border-radius: 5px; cursor: pointer;">
+                رفع الملف
+            </button>
+
+            <p style="margin-top: 20px; color: #555;">
+                📘 يجب أن يحتوي ملف الإكسيل على الأعمدة التالية:
+            </p>
+            <p style="font-weight: bold;">
+                name | description | price | unit | category_name
+            </p>
+
+            <hr style="margin: 20px 0;">
+
+        </form>
+    </div>
+</div>
+{% endblock %}
