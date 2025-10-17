@@ -2,7 +2,7 @@
 {% load static %}
 <script>
   // الأبيض × أسود (الموصى به للطابعة الحرارية)
-  const LOGO_URL = "{% static 'img/ElAseel_logo_bw.png' %}";
+  const LOGO_URL = "{{ request.scheme }}://{{ request.get_host }}{% static 'img/ElAseel_logo_bw.png' %}";
   // لو حبيت الرمادي بدلاً منها:
   // const LOGO_URL = "{% static 'img/ElAseel_logo_gray.png' %}";
 </script>
@@ -86,7 +86,7 @@
     w.document.write('<div class="receipt">');
 
     // ✅ اللوجو
-    w.document.write('<div class="logo-wrap"><img src="/static/img/ElAseel_logo_bw.png" alt="Logo"></div>');
+    w.document.write('<div class="logo-wrap"><img src="{{ request.scheme }}://{{ request.get_host }}{% static "img/ElAseel_logo_bw.png" %}" alt="Logo"></div>');
 
     // ✅ Header
     const now = new Date();

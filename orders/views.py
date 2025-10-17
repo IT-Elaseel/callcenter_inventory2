@@ -116,7 +116,7 @@ def callcenter(request):
     query = request.GET.get("q")
     category_id = request.GET.get("category")
 
-    inventories = Inventory.objects.select_related("product", "branch", "product__category")
+    inventories = Inventory.objects.select_related("product", "branch", "product__category").filter(quantity__gt=0)
     categories = Category.objects.all()
 
     if query:
@@ -716,16 +716,20 @@ def customers_list(request):
     })
 #-------------------------------------------------------------------
 def landing(request):
+    error_message = None
+
     if request.method == "POST":
         form = AuthenticationForm(request, data=request.POST)
         if form.is_valid():
             user = form.get_user()
             login(request, user)
-            return redirect("root_redirect")  # بعد اللوجن يوديه حسب الـ role
+            return redirect("root_redirect")
+        else:
+            error_message = "❌ اسم المستخدم أو كلمة المرور غير صحيحة."
     else:
         form = AuthenticationForm()
 
-    return render(request, "orders/landing.html", {"form": form})
+    return render(request, "orders/landing.html", {"form": form, "login_error": error_message})
 #-------------------------------------------------------------------------------------------------------
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
@@ -900,15 +904,20 @@ def update_inventory(request):
                     inv.save()
 
                     # 🔔 إشعار لحظي
+                    # 🔔 إشعار لحظي موسّع (يدعم الإضافة الجديدة والـ upsert)
                     channel_layer = get_channel_layer()
                     async_to_sync(channel_layer.group_send)(
                         "callcenter_updates",
                         {
                             "type": "callcenter_update",
+                            "action": "upsert",  # 🆕 مهم جدًا علشان الـ JS يعرف إنها عملية إدراج/تحديث
                             "product_id": product.id,
+                            "product_name": product.name,
+                            "category_name": product.category.name if product.category else "",
                             "branch_id": branch.id,
                             "branch_name": branch.name,
                             "new_qty": inv.quantity,
+                            "unit": product.get_unit_display(),
                             "message": f"📦 تم تحديث {product.name} في فرع {branch.name} إلى {inv.quantity}",
                         }
                     )

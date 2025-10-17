@@ -223,6 +223,25 @@ document.addEventListener("DOMContentLoaded", function() {
     });
   }
 });
+// 🟢 استرجاع آخر مسار بعد تحميل الصفحة
+document.addEventListener("DOMContentLoaded", function() {
+  const mainId = localStorage.getItem("selectedMainCategoryId");
+  const mainName = localStorage.getItem("selectedMainCategoryName");
+  const subId = localStorage.getItem("selectedSubCategoryId");
+  const subName = localStorage.getItem("selectedSubCategoryName");
+
+  // لو فيه قسم رئيسي محفوظ
+  if (mainId && mainName) {
+    showSubcategories(mainId, mainName);
+
+    // لو فيه كمان قسم فرعي محفوظ
+    if (subId && subName) {
+      setTimeout(() => {
+        showProducts(subId, subName);
+      }, 200);
+    }
+  }
+});
 </script>
 
 <!-- 🎨 تنسيق الشبكة والأزرار -->

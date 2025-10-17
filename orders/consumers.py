@@ -32,12 +32,17 @@ class CallCenterConsumer(AsyncWebsocketConsumer):
         print("📡 callcenter_update event received:", event)
         await self.send(text_data=json.dumps({
             "type": "callcenter_update",
+            "action": event.get("action"),                # ✅ أضفها
             "message": event.get("message", ""),
             "product_id": event.get("product_id"),
+            "product_name": event.get("product_name"),    # ✅ أضفها
+            "category_name": event.get("category_name"),  # ✅ أضفها
             "branch_id": event.get("branch_id"),
             "branch_name": event.get("branch_name"),
             "new_qty": event.get("new_qty"),
+            "unit": event.get("unit"),                    # ✅ أضفها برضو لو موجودة
         }))
+
 # ✅ خاص بصفحة الفروع
 class BranchConsumer(AsyncWebsocketConsumer):
     async def connect(self):

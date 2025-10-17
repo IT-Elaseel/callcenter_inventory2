@@ -144,6 +144,9 @@ function showSubcategories(categoryId, categoryName) {
   allSubs.forEach(btn => {
     btn.classList.toggle("d-none", btn.dataset.main !== String(categoryId));
   });
+  // 🟢 حفظ القسم الرئيسي في localStorage
+  localStorage.setItem("invSelectedMainCategoryId", categoryId);
+  localStorage.setItem("invSelectedMainCategoryName", categoryName);
 }
 
 function showProducts(subId, subName) {
@@ -155,6 +158,9 @@ function showProducts(subId, subName) {
   allCards.forEach(card => {
     card.classList.toggle("d-none", card.dataset.subcategory !== subId);
   });
+  // 🟢 حفظ القسم الفرعي في localStorage
+  localStorage.setItem("invSelectedSubCategoryId", subId);
+  localStorage.setItem("invSelectedSubCategoryName", subName);
 }
 
 // تحديد الكل
@@ -164,6 +170,22 @@ document.addEventListener('DOMContentLoaded', function(){
     selAll.addEventListener('change', function(){
       document.querySelectorAll("input[name='selected_items']").forEach(cb => cb.checked = selAll.checked);
     });
+  }
+});
+// 🟢 استرجاع آخر مسار بعد تحميل الصفحة
+document.addEventListener("DOMContentLoaded", function() {
+  const mainId = localStorage.getItem("invSelectedMainCategoryId");
+  const mainName = localStorage.getItem("invSelectedMainCategoryName");
+  const subId = localStorage.getItem("invSelectedSubCategoryId");
+  const subName = localStorage.getItem("invSelectedSubCategoryName");
+
+  if (mainId && mainName) {
+    showSubcategories(mainId, mainName);
+    if (subId && subName) {
+      setTimeout(() => {
+        showProducts(subId, subName);
+      }, 200);
+    }
   }
 });
 </script>

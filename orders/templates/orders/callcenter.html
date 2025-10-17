@@ -225,28 +225,82 @@ callSocket.onmessage = (event) => {
   const data = JSON.parse(event.data);
   console.log("📦 Update:", data);
 
+  // 🟢 لو الرسالة فيها منتج وفرع وكمية
   if (data.product_id && data.branch_id && data.new_qty !== undefined) {
     const qtyInput = document.querySelector(
       `.reserve-form input[data-product='${data.product_id}'][data-branch='${data.branch_id}']`
     );
+
+    // ✅ الحالة 1: المنتج موجود بالفعل → حدث الكمية
     if (qtyInput) {
       const cell = qtyInput.closest("tr").querySelector("td:nth-child(3)");
       if (cell) {
         const regex = new RegExp(`🏬\\s*${data.branch_name}:\\s*\\d+`, "g");
-        cell.innerHTML = cell.innerHTML.replace(
-          regex,
-          `🏬 ${data.branch_name}: ${data.new_qty}`
-        );
+        if (cell.innerHTML.match(regex)) {
+          // تحديث الكمية داخل نفس الفرع
+          cell.innerHTML = cell.innerHTML.replace(
+            regex,
+            `🏬 ${data.branch_name}: ${data.new_qty}`
+          );
+        } else {
+          // لو الفرع ده مش مذكور ضمن الكميات → أضفه
+          cell.innerHTML += `<br>🏬 ${data.branch_name}: ${data.new_qty}`;
+        }
       }
     }
+
+    // 🆕 الحالة 2: المنتج مش موجود في الجدول → أضفه (upsert)
+    else if (data.action === "upsert" && data.new_qty > 0) {
+      addNewProductRow(data);
+    }
   }
+
   if (data.message) showToast(data.message, "info");
 };
 
 callSocket.onclose = () => console.warn("⚠️ CallCenter WebSocket closed");
 
 // ========================================================
-// 2️⃣ تنفيذ الحجز بـ Ajax بدون Reload
+// 2️⃣ دالة لإضافة صف منتج جديد لو مش موجود (بكامل الفورم)
+// ========================================================
+function addNewProductRow(data) {
+  const tbody = document.querySelector(".styled-table tbody");
+  if (!tbody) return;
+
+  const row = document.createElement("tr");
+  row.innerHTML = `
+    <td>${data.product_name}</td>
+    <td>${data.category_name || "-"}</td>
+    <td>🏬 ${data.branch_name}: ${data.new_qty}</td>
+    <td>
+      <form method="post" class="reserve-form" onsubmit="reserveProduct(event, this)">
+        <input type="hidden" name="csrfmiddlewaretoken" value="${document.querySelector('[name=csrfmiddlewaretoken]').value}">
+        <input type="hidden" name="product_id" value="${data.product_id}">
+        <input type="hidden" name="branch_id" value="${data.branch_id}">
+        <input type="text" name="customer_name" placeholder="👤 اسم العميل" required>
+        <input type="text" name="customer_phone" placeholder="📞 موبايل"
+               inputmode="numeric" maxlength="11"
+               pattern="\\d{11}" oninput="this.value=this.value.replace(/\\D/g,'').slice(0,11)">
+        <select name="delivery_type" required>
+          <option value="pickup">🚶‍♂️ استلام</option>
+          <option value="delivery">🚚 توصيل</option>
+        </select>
+        <input type="number" name="quantity" value="1" min="1"
+               data-product="${data.product_id}"
+               data-branch="${data.branch_id}"
+               class="qty" onfocus="this.select()">
+        <span>${data.unit || "عدد"}</span>
+        <button type="submit" class="btn branch-btn" data-branch-id="${data.branch_id}">
+          احجز من ${data.branch_name}
+        </button>
+      </form>
+    </td>
+  `;
+  tbody.prepend(row);
+}
+
+// ========================================================
+// 3️⃣ تنفيذ الحجز بـ Ajax بدون Reload
 // ========================================================
 async function reserveProduct(event, form) {
   event.preventDefault();
@@ -271,6 +325,12 @@ async function reserveProduct(event, form) {
     if (data.success) {
       showToast(data.message || "✅ تم تسجيل الحجز بنجاح", "success");
       form.reset();
+
+      // 🟢 لو الكمية الجديدة بقت صفر، نخفي المنتج من الجدول
+      if (data.new_qty === 0) {
+        const row = form.closest("tr");
+        if (row) row.remove();
+      }
     } else {
       showToast(data.message || "❌ حدث خطأ أثناء الحجز", "error");
     }
@@ -282,7 +342,7 @@ async function reserveProduct(event, form) {
 }
 
 // ========================================================
-// 3️⃣ Toast Notification
+// 4️⃣ Toast Notification
 // ========================================================
 function showToast(message, type) {
   const color = type === "success" ? "#28a745" :

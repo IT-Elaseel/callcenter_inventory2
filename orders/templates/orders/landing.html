@@ -85,7 +85,10 @@
     <!-- صندوق تسجيل الدخول -->
     <div class="login-box">
       <h2>🔐 Login</h2>
-      {% if error %}<p class="error">{{ error }}</p>{% endif %}
+      <!-- ✅ عرض رسالة خطأ تسجيل الدخول فقط -->
+       {% if login_error %}
+         <div class="error">{{ login_error }}</div>
+       {% endif %}
       <form method="post">
         {% csrf_token %}
         <input type="text" name="username" placeholder="Username" required><br>
