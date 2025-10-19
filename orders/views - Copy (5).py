@@ -54,11 +54,6 @@ from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.http import JsonResponse
 from django.utils import timezone
-from .models import Product, Category, SecondCategory, DailyRequest, StandardRequest
-from django.utils import timezone
-from channels.layers import get_channel_layer
-from asgiref.sync import async_to_sync
-
 def to_decimal_safe(value, places=2):
     """حوّل أي قيمة إلى Decimal مقنّن بعدد أماكن عشرية (افتراضي 2)."""
     try:
@@ -1701,6 +1696,11 @@ def get_subcategories(request):
     subcategories = SecondCategory.objects.filter(main_category_id=main_id).values("id", "name")
     return JsonResponse(list(subcategories), safe=False)
 #-------------------------------------------------------------------------------------------------------
+from .models import Product, Category, SecondCategory, DailyRequest, StandardRequest
+from django.utils import timezone
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
+
 @login_required
 def add_daily_request(request):
     profile2 = getattr(request.user, "userprofile", None)
@@ -1729,10 +1729,10 @@ def add_daily_request(request):
     if request.method == "POST":
         # 🔹 تحميل الطلبية القياسية
         if "load_standard" in request.POST:
-            standard_items = StandardRequest.objects.filter(branch=branch, stamp_type="order").select_related("product", "product__category")
-            added = 0
+            # ✅ تعديل بسيط هنا عشان يجيب استامبا الطلبية فقط
+            standard_items = StandardRequest.objects.filter(branch=branch, stamp_type="order")
             for item in standard_items:
-                _, created = DailyRequest.objects.get_or_create(
+                DailyRequest.objects.get_or_create(
                     branch=branch,
                     product=item.product,
                     category=item.product.category,
@@ -1743,98 +1743,63 @@ def add_daily_request(request):
                         "created_by": request.user,
                     }
                 )
-                if created:
-                    added += 1
-            messages.success(request, f"✅ تم تحميل الطلبية القياسية لهذا الفرع (أُضيف {added}).")
+            messages.success(request, "✅ تم تحميل الطلبية القياسية لهذا الفرع.")
             return redirect("add_daily_request")
 
         # ➕ إضافة منتج
         elif "add_item" in request.POST:
+            category_id = request.POST.get("category")
             product_id = request.POST.get("product")
-            raw_qty = (request.POST.get("quantity") or "").strip()
-
-            # نجيب المنتج وناخد منه القسم
-            try:
-                product = Product.objects.get(id=product_id)
-                category_id = product.category_id
-            except Product.DoesNotExist:
-                messages.error(request, "❌ المنتج غير موجود.")
-                return redirect("add_daily_request")
-
-            # قراءة الكمية كـ Decimal
-            try:
-                qty = Decimal(str(raw_qty if raw_qty != "" else "0")).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-            except Exception:
-                qty = Decimal('0.00')
-
-            # منع الكميات السالبة/الصفر
-            if qty <= 0:
-                messages.error(request, "❌ أدخل كمية صحيحة.")
-                return redirect("add_daily_request")
-
-            # لو المنتج مش بالكيلو → نحولها لعدد صحيح
-            if product.unit != "kg":
-                qty = qty.to_integral_value(rounding=ROUND_HALF_UP)
-
-            try:
-                dr = DailyRequest.objects.get(
-                    branch=branch,
-                    category_id=category_id,
-                    product_id=product_id,
-                    order_number=order_number,
-                    is_confirmed=False
-                )
-                dr.quantity = (Decimal(str(dr.quantity)) + qty).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                # عدد فقط لو مش كيلو
-                if product.unit != "kg":
-                    dr.quantity = dr.quantity.to_integral_value(rounding=ROUND_HALF_UP)
-                dr.save()
-            except DailyRequest.DoesNotExist:
-                DailyRequest.objects.create(
-                    branch=branch,
-                    category_id=category_id,
-                    product_id=product_id,
-                    quantity=qty,
-                    created_by=request.user,
-                    order_number=order_number,
-                    is_confirmed=False
-                )
-
+            qty = int(request.POST.get("quantity", 1))
+            if product_id and qty > 0:
+                try:
+                    dr = DailyRequest.objects.get(
+                        branch=branch,
+                        category_id=category_id,
+                        product_id=product_id,
+                        order_number=order_number,
+                        is_confirmed=False
+                    )
+                    dr.quantity += qty
+                    dr.save()
+                except DailyRequest.DoesNotExist:
+                    DailyRequest.objects.create(
+                        branch=branch,
+                        category_id=category_id,
+                        product_id=product_id,
+                        quantity=qty,
+                        created_by=request.user,
+                        order_number=order_number,
+                        is_confirmed=False
+                    )
             request.session["selected_category"] = category_id
             return redirect("add_daily_request")
 
-        # ✏️ تحديث كمية عنصر واحد
         elif "update_item" in request.POST:
             req_id = request.POST.get("request_id")
-            new_qty_raw = (request.POST.get("new_quantity") or "").strip()
-            if req_id and new_qty_raw != "":
+            new_qty = request.POST.get("new_quantity")
+            if req_id and new_qty:
                 try:
-                    dr = DailyRequest.objects.select_related("product").get(
-                        id=req_id, branch=branch, order_number=order_number, is_confirmed=False
+                    dr = DailyRequest.objects.get(
+                        id=req_id,
+                        branch=branch,
+                        order_number=order_number,
+                        is_confirmed=False
                     )
-
-                    q = Decimal(str(new_qty_raw)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                    if q <= 0:
-                        messages.error(request, "❌ الكمية يجب أن تكون أكبر من صفر.")
-                        return redirect("add_daily_request")
-
-                    if dr.product.unit != "kg":
-                        q = q.to_integral_value(rounding=ROUND_HALF_UP)
-
-                    dr.quantity = q
+                    dr.quantity = int(new_qty)
                     dr.save()
                 except DailyRequest.DoesNotExist:
                     pass
-                except Exception:
-                    messages.error(request, "❌ كمية غير صالحة.")
             return redirect("add_daily_request")
 
-        # 🗑️ حذف عنصر واحد
         elif "delete_item" in request.POST:
             req_id = request.POST.get("request_id")
             if req_id:
                 DailyRequest.objects.filter(
-                    id=req_id, branch=branch, order_number=order_number, is_confirmed=False
+                    id=req_id,
+                    branch=branch,
+                    order_number=order_number,
+                    is_confirmed=False
                 ).delete()
             return redirect("add_daily_request")
 
@@ -1843,26 +1808,31 @@ def add_daily_request(request):
             selected_ids = request.POST.getlist("selected_items")
             if selected_ids:
                 DailyRequest.objects.filter(
-                    id__in=selected_ids, branch=branch, order_number=order_number, is_confirmed=False
+                    id__in=selected_ids,
+                    branch=branch,
+                    order_number=order_number,
+                    is_confirmed=False
                 ).delete()
-                messages.success(request, f"🗑️ تم حذف {len(selected_ids)} عنصر.")
+                messages.success(request, f"🗑️ تم حذف {len(selected_ids)} عنصر بنجاح.")
             else:
-                messages.warning(request, "⚠️ لم يتم تحديد أي عنصر.")
+                messages.warning(request, "⚠️ لم يتم تحديد أي عنصر للحذف.")
             return redirect("add_daily_request")
 
         # 🔹 حذف الكل
         elif "delete_all" in request.POST:
             DailyRequest.objects.filter(
-                branch=branch, order_number=order_number, is_confirmed=False
+                branch=branch,
+                order_number=order_number,
+                is_confirmed=False
             ).delete()
             messages.success(request, "🚮 تم حذف جميع العناصر من الطلبية الحالية.")
             return redirect("add_daily_request")
 
-        # ✅ تأكيد الطلبية
         elif "confirm_order" in request.POST:
             now = timezone.now()
             DailyRequest.objects.filter(
-                order_number=order_number, branch=branch
+                order_number=order_number,
+                branch=branch
             ).update(is_confirmed=True, confirmed_at=now)
 
             layer = get_channel_layer()
@@ -1884,8 +1854,10 @@ def add_daily_request(request):
     categories = Category.objects.all()
     second_categories = SecondCategory.objects.all()
     requests_today = DailyRequest.objects.filter(
-        order_number=order_number, branch=branch, is_confirmed=False
-    ).select_related("product__category").order_by("product__category__name", "product__name")
+        order_number=order_number,
+        branch=branch,
+        is_confirmed=False
+        ).select_related("product__category").order_by("product__category__name", "product__name")
 
     return render(request, "orders/add_daily_request.html", {
         "products": products,
@@ -1895,7 +1867,6 @@ def add_daily_request(request):
         "order_number": order_number,
         "selected_category": selected_category,
     })
-
 
 #----------------------------------------------------------------
 from django.contrib import messages

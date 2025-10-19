@@ -47,9 +47,8 @@
                     <td>
                         {% for inv in group.list %}
                             {% if inv.quantity > 0 %}
-                              🏬 {{ inv.branch.name }}:
-                              <span class="qty-display">{{ inv.quantity|floatformat:2 }}</span>
-                              <span class="unit-label">{{ inv.product.get_unit_display }}</span><br>                            {% endif %}
+                                🏬 {{ inv.branch.name }}: {{ inv.quantity }}<br>
+                            {% endif %}
                         {% endfor %}
                     </td>
                     <td>
@@ -67,16 +66,13 @@
                                         <option value="pickup">🚶‍♂️ استلام</option>
                                         <option value="delivery">🚚 توصيل</option>
                                     </select>
-                                    <input type="number"
-                                             name="quantity"
-                                             value="{% if inv.product.unit == 'kg' %}0.25{% else %}1{% endif %}"
-                                             min="{% if inv.product.unit == 'kg' %}0.01{% else %}1{% endif %}"
-                                             step="{% if inv.product.unit == 'kg' %}0.01{% else %}1{% endif %}"
-                                             data-product="{{ inv.product.id }}"
-                                             data-branch="{{ inv.branch.id }}"
-                                             class="qty"
-                                             onfocus="this.select()">
-                                      <span>{{ inv.product.get_unit_display }}</span>
+
+                                    <input type="number" name="quantity" value="1" min="1"
+                                        data-product="{{ inv.product.id }}"
+                                        data-branch="{{ inv.branch.id }}"
+                                        class="qty" onfocus="this.select()">
+                                    <span>{{ inv.product.get_unit_display }}</span>
+
                                     <button type="submit" class="btn branch-btn" data-branch-id="{{ inv.branch.id }}">
                                         احجز من {{ inv.branch.name }}
                                     </button>
@@ -239,31 +235,17 @@ callSocket.onmessage = (event) => {
     if (qtyInput) {
       const cell = qtyInput.closest("tr").querySelector("td:nth-child(3)");
       if (cell) {
-        const branchText = `🏬 ${data.branch_name}:`;
-        const displayValue = `${branchText} ${parseFloat(data.new_qty).toFixed(2)} ${data.unit || ''}`;
-
-        // نجيب كل السطور اللى فيها الفروع
-        const lines = cell.innerHTML.split("<br>").map(line => line.trim()).filter(l => l);
-
-        let updated = false;
-        for (let i = 0; i < lines.length; i++) {
-          if (lines[i].startsWith(branchText)) {
-            lines[i] = displayValue;
-            updated = true;
-            break;
-          }
+        const regex = new RegExp(`🏬\\s*${data.branch_name}:\\s*\\d+`, "g");
+        if (cell.innerHTML.match(regex)) {
+          // تحديث الكمية داخل نفس الفرع
+          cell.innerHTML = cell.innerHTML.replace(
+            regex,
+            `🏬 ${data.branch_name}: ${data.new_qty}`
+          );
+        } else {
+          // لو الفرع ده مش مذكور ضمن الكميات → أضفه
+          cell.innerHTML += `<br>🏬 ${data.branch_name}: ${data.new_qty}`;
         }
-
-        // لو الفرع مش موجود، نضيفه
-        if (!updated) lines.push(displayValue);
-
-        cell.innerHTML = lines.join("<br>");
-      }
-
-      // 🟢 كمان حدث span.qty-display لو موجود في نفس الصف
-      const qtyDisplay = qtyInput.closest("tr").querySelector(".qty-display");
-      if (qtyDisplay) {
-        qtyDisplay.textContent = parseFloat(data.new_qty).toFixed(2);
       }
     }
 
@@ -277,6 +259,7 @@ callSocket.onmessage = (event) => {
 };
 
 callSocket.onclose = () => console.warn("⚠️ CallCenter WebSocket closed");
+
 // ========================================================
 // 2️⃣ دالة لإضافة صف منتج جديد لو مش موجود (بكامل الفورم)
 // ========================================================
@@ -302,7 +285,8 @@ function addNewProductRow(data) {
           <option value="pickup">🚶‍♂️ استلام</option>
           <option value="delivery">🚚 توصيل</option>
         </select>
-        <input type="number" name="quantity" value="1.00" min="0.01" step="0.01"               data-product="${data.product_id}"
+        <input type="number" name="quantity" value="1" min="1"
+               data-product="${data.product_id}"
                data-branch="${data.branch_id}"
                class="qty" onfocus="this.select()">
         <span>${data.unit || "عدد"}</span>

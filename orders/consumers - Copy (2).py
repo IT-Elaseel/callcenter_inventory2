@@ -1,6 +1,6 @@
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
-from decimal import Decimal
+
 # ✅ خاص بالكنترول
 class ControlRequestsConsumer(AsyncWebsocketConsumer):
     async def connect(self):
@@ -30,27 +30,19 @@ class CallCenterConsumer(AsyncWebsocketConsumer):
 
     async def callcenter_update(self, event):
         print("📡 callcenter_update event received:", event)
-
-        # 🧩 تأمين القيم قبل التحويل لـ JSON
-        safe_event = {}
-        for k, v in event.items():
-            if isinstance(v, Decimal):
-                safe_event[k] = str(v)  # نحول Decimal لنص
-            else:
-                safe_event[k] = v
-
         await self.send(text_data=json.dumps({
             "type": "callcenter_update",
-            "action": safe_event.get("action"),
-            "message": safe_event.get("message", ""),
-            "product_id": safe_event.get("product_id"),
-            "product_name": safe_event.get("product_name"),
-            "category_name": safe_event.get("category_name"),
-            "branch_id": safe_event.get("branch_id"),
-            "branch_name": safe_event.get("branch_name"),
-            "new_qty": safe_event.get("new_qty"),  # 👈 الآن مؤمن
-            "unit": safe_event.get("unit"),
+            "action": event.get("action"),                # ✅ أضفها
+            "message": event.get("message", ""),
+            "product_id": event.get("product_id"),
+            "product_name": event.get("product_name"),    # ✅ أضفها
+            "category_name": event.get("category_name"),  # ✅ أضفها
+            "branch_id": event.get("branch_id"),
+            "branch_name": event.get("branch_name"),
+            "new_qty": event.get("new_qty"),
+            "unit": event.get("unit"),                    # ✅ أضفها برضو لو موجودة
         }))
+
 # ✅ خاص بصفحة الفروع
 class BranchConsumer(AsyncWebsocketConsumer):
     async def connect(self):

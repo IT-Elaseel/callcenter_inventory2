@@ -1,7 +1,10 @@
 #!/bin/sh
 set -e
 
+echo "🚀 Running migrations and collecting static files..."
 python manage.py migrate --noinput
 python manage.py collectstatic --noinput
 
-exec gunicorn sweets_factory.wsgi:application --bind 0.0.0.0:8001
+echo "✅ Starting Daphne ASGI server..."
+exec daphne -b 0.0.0.0 -p 8001 sweets_factory.asgi:application
+

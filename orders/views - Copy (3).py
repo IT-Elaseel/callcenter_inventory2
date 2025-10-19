@@ -39,34 +39,6 @@ from django.views.decorators.http import require_POST
 from .decorators import role_required
 from .forms import (CategoryForm, ProductForm, BranchForm,UserCreateForm, ArabicPasswordChangeForm)
 from .models import (Category, Product, Inventory, Reservation,Branch, Customer, InventoryTransaction,DailyRequest, OrderCounter)
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from django.db import transaction
-from django.http import JsonResponse
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import render
-from django.contrib import messages
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
-from .models import Product, Branch, Category, Inventory, Reservation, Customer
-
-from decimal import Decimal, ROUND_HALF_UP
-from django.shortcuts import get_object_or_404
-from django.db import transaction
-from django.http import JsonResponse
-from django.utils import timezone
-from .models import Product, Category, SecondCategory, DailyRequest, StandardRequest
-from django.utils import timezone
-from channels.layers import get_channel_layer
-from asgiref.sync import async_to_sync
-
-def to_decimal_safe(value, places=2):
-    """حوّل أي قيمة إلى Decimal مقنّن بعدد أماكن عشرية (افتراضي 2)."""
-    try:
-        d = Decimal(str(value))
-        quant = Decimal('1').scaleb(-places)  # Decimal('0.01') لو places=2
-        return d.quantize(quant, rounding=ROUND_HALF_UP)
-    except (InvalidOperation, TypeError, ValueError):
-        return Decimal('0').quantize(Decimal('1').scaleb(-places))
 #------------------------------التحقق من المستخدم ادمن اول لا-------------------------------------
 def is_admin(user):
     return (
@@ -130,6 +102,15 @@ def broadcast_new_reservation(reservation, qty=1, user=None):
         }
     )
 #-------------------------------------------------------------
+from django.db import transaction
+from django.http import JsonResponse
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render
+from django.contrib import messages
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+from .models import Product, Branch, Category, Inventory, Reservation, Customer
+
 @login_required
 def callcenter(request):
     query = request.GET.get("q")
@@ -143,47 +124,38 @@ def callcenter(request):
     if category_id:
         inventories = inventories.filter(product__category_id=category_id)
 
+    # معالجة POST (يُتوقع AJAX أو POST عادي)
     if request.method == "POST":
         try:
             product_id = request.POST.get("product_id")
             branch_id = request.POST.get("branch_id")
             customer_name = (request.POST.get("customer_name") or "").strip()
             customer_phone = (request.POST.get("customer_phone") or "").strip()
-            delivery_type = request.POST.get("delivery_type") or "pickup"
-
-            # ✅ هات المنتج والفرع الأول عشان نعرف وحدة المنتج
-            product = get_object_or_404(Product, id=product_id)
-            branch = get_object_or_404(Branch, id=branch_id)
-
-            # ✅ قراءة الكمية بشكل آمن
-            raw_qty = (request.POST.get("quantity") or "1").strip()
+            delivery_type = request.POST.get("delivery_type")
             try:
-                q = Decimal(str(raw_qty))
-            except Exception:
-                return JsonResponse({"success": False, "message": "❌ كمية غير صالحة."}, status=400)
+                qty = int(request.POST.get("quantity", 1))
+            except (TypeError, ValueError):
+                qty = 1
 
-            # ✅ تحقق حسب الوحدة
-            if product.unit == "kg":
-                qty = q.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                if qty <= 0:
-                    return JsonResponse({"success": False, "message": "❌ الكمية بالكيلو لازم تكون أكبر من 0."}, status=400)
-            else:
-                # عدد/سرفيز/صاج → أعداد صحيحة فقط
-                qty_int = int(q.to_integral_value(rounding=ROUND_HALF_UP))
-                if qty_int < 1:
-                    return JsonResponse({"success": False, "message": "❌ الكمية لازم تكون عددًا صحيحًا موجبًا."}, status=400)
-                qty = Decimal(qty_int)
+            # تحقق أساسي من وجود المنتج والفرع
+            try:
+                product = Product.objects.get(id=product_id)
+                branch = Branch.objects.get(id=branch_id)
+            except (Product.DoesNotExist, Branch.DoesNotExist):
+                return JsonResponse({"success": False, "message": "❌ المنتج أو الفرع غير موجود."}, status=400)
 
-            # ✅ معاملة وتحديث المخزون
+            if qty < 1:
+                return JsonResponse({"success": False, "message": "❌ الكمية لازم تكون رقم موجب."}, status=400)
+
+            # معاملة لضمان سلامة التحديث على المخزون
             with transaction.atomic():
                 inventory = Inventory.objects.select_for_update().get(product=product, branch=branch)
 
                 if inventory.quantity < qty:
-                    return JsonResponse(
-                        {"success": False, "message": f"❌ الكمية المطلوبة غير متوفرة (المتاح {inventory.quantity})."},
-                        status=400
-                    )
+                    return JsonResponse({"success": False, "message": f"❌ الكمية المطلوبة غير متوفرة (المتاح {inventory.quantity})."}, status=400)
 
+                # **هنا المهم**: لا نبحث عن عميل حسب الهاتف.
+                # إذا دخلت اسم أو رقم → نُنشئ سجل عميل جديد. لو لم تدخل أى بيانات → نترك customer = None
                 customer = None
                 if customer_name or customer_phone:
                     customer = Customer.objects.create(
@@ -195,30 +167,26 @@ def callcenter(request):
                     customer=customer,
                     product=product,
                     branch=branch,
-                    delivery_type=delivery_type,
+                    delivery_type=delivery_type if delivery_type else "pickup",
                     status="pending",
                     quantity=qty,
-                    reserved_by=request.user,
+                    reserved_by=request.user if request.user.is_authenticated else None,
                 )
 
-                # خصم وتثبيت بدقتين عشريتين
-                inventory.quantity = (inventory.quantity - qty).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                # خصم الكمية وحفظ
+                inventory.quantity -= qty
                 inventory.save()
 
-            # ✅ WebSocket: ابعت أرقام كـ string لتفادي Decimal serialization
+            # إرسال تحديثات WebSocket
             channel_layer = get_channel_layer()
             async_to_sync(channel_layer.group_send)(
                 "callcenter_updates",
                 {
                     "type": "callcenter_update",
-                    "action": "upsert",
                     "product_id": product.id,
-                    "product_name": product.name,
-                    "category_name": product.category.name if product.category else "",
                     "branch_id": branch.id,
                     "branch_name": branch.name,
-                    "new_qty": str(inventory.quantity),  # ← مهم
-                    "unit": product.get_unit_display(),
+                    "new_qty": inventory.quantity,
                     "message": f"📦 تم تحديث {product.name} في فرع {branch.name} إلى {inventory.quantity}",
                 },
             )
@@ -227,33 +195,33 @@ def callcenter(request):
                 "branch_updates",
                 {
                     "type": "branch_update",
-                    "message": f"🆕 حجز جديد ({product.name} × {str(qty)})",
+                    "message": f"🆕 حجز جديد ({product.name} × {qty})",
                     "reservation_id": reservation.id,
                     "product_name": product.name,
-                    "quantity": str(qty),  # ← مهم
+                    "quantity": qty,
                     "customer_name": customer.name if customer else "-",
                     "customer_phone": customer.phone if customer else "-",
                     "created_at": timezone.localtime(reservation.created_at).strftime('%Y-%m-%d %H:%M:%S'),
                     "reserved_by": request.user.username,
                 },
             )
-
+            # ✅ إشعار صفحة الحجوزات
             async_to_sync(channel_layer.group_send)(
                 "reservations_updates",
                 {
-                    "type": "reservations_update",
+                    "type": "reservations_update",          # ← لازم يطابق دالة consumer
                     "action": "new",
                     "message": f"🆕 تم إضافة حجز جديد #{reservation.id}",
                     "reservation_id": reservation.id,
                     "product_name": product.name,
-                    "quantity": str(qty),  # ← مهم
+                    "quantity": qty,
                     "customer_name": customer.name if customer else "-",
                     "customer_phone": customer.phone if customer else "-",
                     "branch_name": branch.name,
                     "delivery_type": reservation.get_delivery_type_display(),
                     "status": reservation.get_status_display(),
                     "created_at": timezone.localtime(reservation.created_at).strftime('%Y-%m-%d %H:%M:%S'),
-                    "decision_at": "",
+                    "decision_at": "",  # مفيش قرار لسه
                     "reserved_by": request.user.username,
                 },
             )
@@ -261,22 +229,28 @@ def callcenter(request):
             return JsonResponse({
                 "success": True,
                 "message": f"✅ تم حجز {product.name}" + (f" للعميل {customer.name}" if customer else ""),
-                "new_qty": str(inventory.quantity),  # ← لتوحيد النوع
+                "new_qty": inventory.quantity,
             })
 
         except Inventory.DoesNotExist:
             return JsonResponse({"success": False, "message": "❌ لا يوجد مخزون لهذا المنتج في الفرع المختار."}, status=400)
         except Exception as e:
-            import traceback; traceback.print_exc()
+            import traceback
+            traceback.print_exc()
             return JsonResponse({"success": False, "message": f"❌ خطأ داخلي: {str(e)}"}, status=500)
 
-    # GET
-    return render(request, "orders/callcenter.html", {
-        "categories": categories,
-        "inventories": inventories,
-        "selected_category": int(category_id) if category_id else None,
-        "query": query,
-    })
+    # GET → عرض الصفحة
+    return render(
+        request,
+        "orders/callcenter.html",
+        {
+            "categories": categories,
+            "inventories": inventories,
+            "selected_category": int(category_id) if category_id else None,
+            "query": query,
+        },
+    )
+
 #----------------------------قايمه الحجوزات---------------------------------
 @login_required
 def reservations_list(request):
@@ -765,49 +739,31 @@ from django.contrib import messages
 from django.http import JsonResponse
 from .decorators import role_required
 from .models import Product, Category, SecondCategory, StandardRequest, Inventory, InventoryTransaction
+
 def _get_worklist(request):
     """
-    ترجع dict بالشكل: {product_id(str): qty_str}
-    حيث qty_str محفوظ كسلسلة منسقة مثل "1.50"
+    ترجع dict بالشكل: {product_id(str): qty(int)}
+    محفوظة في session تحت المفتاح 'inventory_worklist'
     """
     wl = request.session.get("inventory_worklist", {})
-    # نرجع نسخة نظيفة (نتجاهل القيم الغير صالحة)
+    # تأكد كله ints
     clean = {}
-    for k, v in (wl or {}).items():
+    for k, v in wl.items():
         try:
             pid = str(int(k))
-            # نتأكد إن القيمة قابلة للتحويل لـ Decimal
-            d = to_decimal_safe(v, places=2)
-            if d >= Decimal('0.00'):
-                clean[pid] = str(d.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+            q = int(v)
+            if q > -1:
+                clean[pid] = q
         except Exception:
             continue
-    # احفظ النسخة المنظفة في الجلسة (optional)
     request.session["inventory_worklist"] = clean
     request.session.modified = True
     return clean
 
-
 def _save_worklist(request, wl_dict):
-    """
-    يتوقع wl_dict شكل: {pid: qty_str_or_number}
-    يقوم بتخزين قيم صالحة كسلاسل منسقة في session.
-    """
-    safe_dict = {}
-    for k, v in (wl_dict or {}).items():
-        try:
-            pid = str(int(k))
-        except Exception:
-            continue
-        try:
-            d = to_decimal_safe(v, places=2)
-            if d >= Decimal('0.00'):
-                safe_dict[pid] = str(d.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
-        except Exception:
-            continue
-    request.session["inventory_worklist"] = safe_dict
+    request.session["inventory_worklist"] = {str(k): int(v) for k, v in wl_dict.items() if int(v) > -1}
     request.session.modified = True
-#-------------------------------------------------------------------------------------------------------
+
 @login_required
 @role_required(["branch"])
 def update_inventory(request):
@@ -839,42 +795,32 @@ def update_inventory(request):
                 branch=branch,
                 stamp_type="inventory"
             ).select_related("product")
-
             if not stamp_qs.exists():
                 messages.warning(request, "⚠️ لا توجد استامبا لتحديث المخزون لهذا الفرع.")
             else:
-                updated = 0
+                added = 0
                 for it in stamp_qs:
                     pid = str(it.product_id)
-                    new_val = str(to_decimal_safe(it.default_quantity, places=2))
-                    # 🟢 في الحالة الجديدة بنحدث الكمية حتى لو المنتج موجود مسبقًا
-                    if pid in worklist:
-                        # فقط لو القيمة مختلفة فعلاً، نحدّثها
-                        if worklist[pid] != new_val:
-                            worklist[pid] = new_val
-                            updated += 1
-                    else:
-                        # منتج جديد مش في القائمة
-                        worklist[pid] = new_val
-                        updated += 1
-
+                    # لو موجود مسبقًا ما نكسرش تعديل المستخدم؛ خليه كما هو
+                    if pid not in worklist:
+                        worklist[pid] = int(it.default_quantity or 0)
+                        added += 1
                 _save_worklist(request, worklist)
-                messages.success(request, f"✅ تم تحميل استامبا تحديث المخزون وتحديث {updated} منتج بالقيم الجديدة.")
+                messages.success(request, f"✅ تم تحميل استامبا تحديث المخزون ودمج {added} عنصر للقائمة.")
+            # نخلي stamp_items يتعرض فوق لو حبيت تُظهر الفرق
             stamp_items = stamp_qs
+
         # ➕ إضافة منتج من الشبكة السفلية إلى القائمة
         elif "add_item" in request.POST:
             product_id = request.POST.get("product")
             qty = request.POST.get("quantity", "1")
             try:
                 pid = str(int(product_id))
-                q = to_decimal_safe(qty, places=2)
+                q = int(qty)
                 if q < 0:
-                    q = Decimal('0.00')
-
-                # احصل على القيمة الحالية من worklist (محفوظة كسلسلة) وحولها لـ Decimal
-                existing = to_decimal_safe(worklist.get(pid, '0'), places=2)
-                new_total = (existing + q).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                worklist[pid] = str(new_total)
+                    q = 0
+                # لو العنصر موجود نزود الكمية، لو تحب الاستبدال بدّل السطر اللي تحت:
+                worklist[pid] = worklist.get(pid, 0) + q
                 _save_worklist(request, worklist)
                 pr_name = Product.objects.get(id=int(pid)).name
                 messages.success(request, f"✅ تم إضافة {pr_name} ({q}).")
@@ -888,11 +834,11 @@ def update_inventory(request):
             new_qty = request.POST.get("new_quantity")
             try:
                 pid = str(int(rid))
-                q = to_decimal_safe(new_qty, places=2)
+                q = int(new_qty)
                 if q < 0:
-                    q = Decimal('0.00')
+                    q = 0
                 if pid in worklist:
-                    worklist[pid] = str(q.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+                    worklist[pid] = q
                     _save_worklist(request, worklist)
                     messages.success(request, "✅ تم تحديث الكمية.")
             except Exception:
@@ -940,67 +886,60 @@ def update_inventory(request):
                 if key.startswith("quantities[") and key.endswith("]"):
                     try:
                         pid = key[len("quantities["):-1]
-                        q = to_decimal_safe(val, places=2)
+                        q = int(val)
                         if q < 0:
-                            q = Decimal('0.00')
+                            q = 0
                         if pid in worklist:
-                            worklist[pid] = str(q.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+                            worklist[pid] = q
                     except Exception:
                         continue
             _save_worklist(request, worklist)
 
             updated = 0
-            for pid, qty_str in worklist.items():
+            for pid, qty in worklist.items():
                 try:
                     product = Product.objects.get(id=int(pid))
                     inv, _ = Inventory.objects.get_or_create(branch=branch, product=product)
-                    # احفظ الكمية كسِمَة Decimal (فُرْصى: Inventory.quantity يجب أن يكون DecimalField)
-                    inv.quantity = to_decimal_safe(qty_str, places=2)
+                    inv.quantity = int(qty)
                     inv.save()
 
-                    # 🔔 إشعار لحظي (أرسل الكمية كسلسلة للحفاظ على الدقة)
+                    # 🔔 إشعار لحظي
+                    # 🔔 إشعار لحظي موسّع (يدعم الإضافة الجديدة والـ upsert)
                     channel_layer = get_channel_layer()
                     async_to_sync(channel_layer.group_send)(
                         "callcenter_updates",
                         {
                             "type": "callcenter_update",
-                            "action": "upsert",
+                            "action": "upsert",  # 🆕 مهم جدًا علشان الـ JS يعرف إنها عملية إدراج/تحديث
                             "product_id": product.id,
                             "product_name": product.name,
                             "category_name": product.category.name if product.category else "",
                             "branch_id": branch.id,
                             "branch_name": branch.name,
-                            "new_qty": str(inv.quantity),
+                            "new_qty": inv.quantity,
                             "unit": product.get_unit_display(),
                             "message": f"📦 تم تحديث {product.name} في فرع {branch.name} إلى {inv.quantity}",
                         }
                     )
 
-                    # سجل حركة - اختيار نوع الحقل في InventoryTransaction.quantity للتحويل
-                    txn_qty_decimal = to_decimal_safe(qty_str, places=2)
-                    field_type = InventoryTransaction._meta.get_field('quantity').get_internal_type()
-                    if field_type == 'DecimalField':
-                        txn_value = txn_qty_decimal
-                    else:
-                        # fallback: لو لسه IntegerField → نقربه لأقرب عدد صحيح (يمكن تغييره إلى floor/ceil حسب رغبتك)
-                        txn_value = int(txn_qty_decimal.to_integral_value(rounding=ROUND_HALF_UP))
-
+                    # سجل حركة
                     InventoryTransaction.objects.create(
                         product=product,
                         from_branch=None,
                         to_branch=branch,
-                        quantity=txn_value,
+                        quantity=int(qty),
                         transaction_type="transfer_in",
                         added_by=request.user
                     )
                     updated += 1
                 except Exception:
-                    # لو فيه أي خطأ في صف معين نتجاهله ونكمّل
                     continue
 
             messages.success(request, f"✅ تم تحديث الكميات لعدد {updated} منتج.")
+            # نفضل مخلّين القائمة كما هي عشان يقدر يكمّل تعديلات إن حب
             return redirect("update_inventory")
 
+        # (اختياري) لو فيه أي طلبات غير معروفة
         else:
             return JsonResponse({"success": False, "message": "❌ طلب غير معروف"})
 
@@ -1023,34 +962,19 @@ def update_inventory(request):
     inventories = Inventory.objects.filter(branch=branch).select_related("product")
     second_categories = SecondCategory.objects.all()
 
-
     # جهّز العناصر المعروضة في الجدول (من worklist)
     work_items = []
     if worklist:
-        # رجّع كل المنتجات مرة واحدة
+        # هنجلب المنتجات ب一次
         plist = Product.objects.filter(id__in=[int(k) for k in worklist.keys()]).select_related("category")
         prod_map = {str(p.id): p for p in plist}
-
-        for pid, qty_str in worklist.items():
+        for pid, qty in worklist.items():
             p = prod_map.get(str(pid))
-            if not p:
-                continue
-
-            # 👇 التحويل المضمون
-            try:
-                display_qty = Decimal(str(qty_str)).quantize(Decimal('0.01'))
-            except Exception:
-                display_qty = Decimal('0.00')
-
-            # 👇 لو المنتج بالكيلو نعرضها كما هي (مثلاً 1.25)
-            # لو بالعدد نحولها لصحيح
-            if p.unit != "kg":
-                display_qty = display_qty.to_integral_value()
-
-            work_items.append({
-                "product": p,
-                "quantity": display_qty,
-            })
+            if p:
+                work_items.append({
+                    "product": p,
+                    "quantity": qty,
+                })
 
     return render(
         request,
@@ -1062,8 +986,8 @@ def update_inventory(request):
             "products": products,
             "inventories": inventories,
             "branch": branch,
-            "stamp_items": stamp_items,
-            "work_items": work_items,
+            "stamp_items": stamp_items,   # للعرض فقط عند التحميل (اختياري)
+            "work_items": work_items,     # القائمة الفعلية اللي بنعدل فيها ونطبّق منها
         },
     )
 #-------------------------------------------------------------------------------------------------------
@@ -1095,12 +1019,10 @@ def set_inventory_stamp(request):
         # ➕ إضافة منتج
         if "add_item" in request.POST:
             product_id = request.POST.get("product")
-            # تحويل آمن للقيمة (يدعم كسور)
-            qty = to_decimal_safe(request.POST.get("quantity", 1), places=2)
+            qty = int(request.POST.get("quantity", 1))
 
-            if product_id and qty > Decimal('0.00'):
+            if product_id and qty > 0:
                 product = Product.objects.get(id=product_id)
-                # لاحظ أننا نحفظ default_quantity كـ Decimal لذا الموديل لازم يكون DecimalField
                 StandardRequest.objects.update_or_create(
                     branch=branch,
                     product=product,
@@ -1117,12 +1039,12 @@ def set_inventory_stamp(request):
         elif "update_item" in request.POST:
             std_id = request.POST.get("update_item")
             new_qty = request.POST.get(f"quantities[{std_id}]")
-            if std_id and new_qty is not None:
+            if std_id and new_qty:
                 try:
                     sr = StandardRequest.objects.get(id=std_id, branch=branch, stamp_type="inventory")
-                    sr.default_quantity = to_decimal_safe(new_qty, places=2)
+                    sr.default_quantity = int(new_qty)
                     sr.save()
-                    messages.success(request, f"✏️ تم تحديث {sr.product.name} إلى {sr.default_quantity}.")
+                    messages.success(request, f"✏️ تم تحديث {sr.product.name} إلى {new_qty}.")
                 except StandardRequest.DoesNotExist:
                     pass
             return redirect("set_inventory_stamp")
@@ -1701,6 +1623,11 @@ def get_subcategories(request):
     subcategories = SecondCategory.objects.filter(main_category_id=main_id).values("id", "name")
     return JsonResponse(list(subcategories), safe=False)
 #-------------------------------------------------------------------------------------------------------
+from .models import Product, Category, SecondCategory, DailyRequest, StandardRequest
+from django.utils import timezone
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
+
 @login_required
 def add_daily_request(request):
     profile2 = getattr(request.user, "userprofile", None)
@@ -1729,10 +1656,10 @@ def add_daily_request(request):
     if request.method == "POST":
         # 🔹 تحميل الطلبية القياسية
         if "load_standard" in request.POST:
-            standard_items = StandardRequest.objects.filter(branch=branch, stamp_type="order").select_related("product", "product__category")
-            added = 0
+            # ✅ تعديل بسيط هنا عشان يجيب استامبا الطلبية فقط
+            standard_items = StandardRequest.objects.filter(branch=branch, stamp_type="order")
             for item in standard_items:
-                _, created = DailyRequest.objects.get_or_create(
+                DailyRequest.objects.get_or_create(
                     branch=branch,
                     product=item.product,
                     category=item.product.category,
@@ -1743,98 +1670,63 @@ def add_daily_request(request):
                         "created_by": request.user,
                     }
                 )
-                if created:
-                    added += 1
-            messages.success(request, f"✅ تم تحميل الطلبية القياسية لهذا الفرع (أُضيف {added}).")
+            messages.success(request, "✅ تم تحميل الطلبية القياسية لهذا الفرع.")
             return redirect("add_daily_request")
 
         # ➕ إضافة منتج
         elif "add_item" in request.POST:
+            category_id = request.POST.get("category")
             product_id = request.POST.get("product")
-            raw_qty = (request.POST.get("quantity") or "").strip()
-
-            # نجيب المنتج وناخد منه القسم
-            try:
-                product = Product.objects.get(id=product_id)
-                category_id = product.category_id
-            except Product.DoesNotExist:
-                messages.error(request, "❌ المنتج غير موجود.")
-                return redirect("add_daily_request")
-
-            # قراءة الكمية كـ Decimal
-            try:
-                qty = Decimal(str(raw_qty if raw_qty != "" else "0")).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-            except Exception:
-                qty = Decimal('0.00')
-
-            # منع الكميات السالبة/الصفر
-            if qty <= 0:
-                messages.error(request, "❌ أدخل كمية صحيحة.")
-                return redirect("add_daily_request")
-
-            # لو المنتج مش بالكيلو → نحولها لعدد صحيح
-            if product.unit != "kg":
-                qty = qty.to_integral_value(rounding=ROUND_HALF_UP)
-
-            try:
-                dr = DailyRequest.objects.get(
-                    branch=branch,
-                    category_id=category_id,
-                    product_id=product_id,
-                    order_number=order_number,
-                    is_confirmed=False
-                )
-                dr.quantity = (Decimal(str(dr.quantity)) + qty).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                # عدد فقط لو مش كيلو
-                if product.unit != "kg":
-                    dr.quantity = dr.quantity.to_integral_value(rounding=ROUND_HALF_UP)
-                dr.save()
-            except DailyRequest.DoesNotExist:
-                DailyRequest.objects.create(
-                    branch=branch,
-                    category_id=category_id,
-                    product_id=product_id,
-                    quantity=qty,
-                    created_by=request.user,
-                    order_number=order_number,
-                    is_confirmed=False
-                )
-
+            qty = int(request.POST.get("quantity", 1))
+            if product_id and qty > 0:
+                try:
+                    dr = DailyRequest.objects.get(
+                        branch=branch,
+                        category_id=category_id,
+                        product_id=product_id,
+                        order_number=order_number,
+                        is_confirmed=False
+                    )
+                    dr.quantity += qty
+                    dr.save()
+                except DailyRequest.DoesNotExist:
+                    DailyRequest.objects.create(
+                        branch=branch,
+                        category_id=category_id,
+                        product_id=product_id,
+                        quantity=qty,
+                        created_by=request.user,
+                        order_number=order_number,
+                        is_confirmed=False
+                    )
             request.session["selected_category"] = category_id
             return redirect("add_daily_request")
 
-        # ✏️ تحديث كمية عنصر واحد
         elif "update_item" in request.POST:
             req_id = request.POST.get("request_id")
-            new_qty_raw = (request.POST.get("new_quantity") or "").strip()
-            if req_id and new_qty_raw != "":
+            new_qty = request.POST.get("new_quantity")
+            if req_id and new_qty:
                 try:
-                    dr = DailyRequest.objects.select_related("product").get(
-                        id=req_id, branch=branch, order_number=order_number, is_confirmed=False
+                    dr = DailyRequest.objects.get(
+                        id=req_id,
+                        branch=branch,
+                        order_number=order_number,
+                        is_confirmed=False
                     )
-
-                    q = Decimal(str(new_qty_raw)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                    if q <= 0:
-                        messages.error(request, "❌ الكمية يجب أن تكون أكبر من صفر.")
-                        return redirect("add_daily_request")
-
-                    if dr.product.unit != "kg":
-                        q = q.to_integral_value(rounding=ROUND_HALF_UP)
-
-                    dr.quantity = q
+                    dr.quantity = int(new_qty)
                     dr.save()
                 except DailyRequest.DoesNotExist:
                     pass
-                except Exception:
-                    messages.error(request, "❌ كمية غير صالحة.")
             return redirect("add_daily_request")
 
-        # 🗑️ حذف عنصر واحد
         elif "delete_item" in request.POST:
             req_id = request.POST.get("request_id")
             if req_id:
                 DailyRequest.objects.filter(
-                    id=req_id, branch=branch, order_number=order_number, is_confirmed=False
+                    id=req_id,
+                    branch=branch,
+                    order_number=order_number,
+                    is_confirmed=False
                 ).delete()
             return redirect("add_daily_request")
 
@@ -1843,26 +1735,31 @@ def add_daily_request(request):
             selected_ids = request.POST.getlist("selected_items")
             if selected_ids:
                 DailyRequest.objects.filter(
-                    id__in=selected_ids, branch=branch, order_number=order_number, is_confirmed=False
+                    id__in=selected_ids,
+                    branch=branch,
+                    order_number=order_number,
+                    is_confirmed=False
                 ).delete()
-                messages.success(request, f"🗑️ تم حذف {len(selected_ids)} عنصر.")
+                messages.success(request, f"🗑️ تم حذف {len(selected_ids)} عنصر بنجاح.")
             else:
-                messages.warning(request, "⚠️ لم يتم تحديد أي عنصر.")
+                messages.warning(request, "⚠️ لم يتم تحديد أي عنصر للحذف.")
             return redirect("add_daily_request")
 
         # 🔹 حذف الكل
         elif "delete_all" in request.POST:
             DailyRequest.objects.filter(
-                branch=branch, order_number=order_number, is_confirmed=False
+                branch=branch,
+                order_number=order_number,
+                is_confirmed=False
             ).delete()
             messages.success(request, "🚮 تم حذف جميع العناصر من الطلبية الحالية.")
             return redirect("add_daily_request")
 
-        # ✅ تأكيد الطلبية
         elif "confirm_order" in request.POST:
             now = timezone.now()
             DailyRequest.objects.filter(
-                order_number=order_number, branch=branch
+                order_number=order_number,
+                branch=branch
             ).update(is_confirmed=True, confirmed_at=now)
 
             layer = get_channel_layer()
@@ -1884,8 +1781,10 @@ def add_daily_request(request):
     categories = Category.objects.all()
     second_categories = SecondCategory.objects.all()
     requests_today = DailyRequest.objects.filter(
-        order_number=order_number, branch=branch, is_confirmed=False
-    ).select_related("product__category").order_by("product__category__name", "product__name")
+        order_number=order_number,
+        branch=branch,
+        is_confirmed=False
+        ).select_related("product__category").order_by("product__category__name", "product__name")
 
     return render(request, "orders/add_daily_request.html", {
         "products": products,
@@ -1895,7 +1794,6 @@ def add_daily_request(request):
         "order_number": order_number,
         "selected_category": selected_category,
     })
-
 
 #----------------------------------------------------------------
 from django.contrib import messages
@@ -1921,13 +1819,9 @@ def set_standard_request(request):
     if request.method == "POST":
         # ➕ إضافة منتج جديد
         if "add_item" in request.POST:
+            category_id = request.POST.get("category")
             product_id = request.POST.get("product")
-            qty_raw = request.POST.get("quantity", "1")
-
-            try:
-                qty = Decimal(str(qty_raw)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-            except Exception:
-                qty = Decimal('1.00')
+            qty = int(request.POST.get("quantity", 1))
 
             if product_id and qty > 0:
                 product = Product.objects.get(id=product_id)
@@ -1940,27 +1834,20 @@ def set_standard_request(request):
                         "updated_at": timezone.now()
                     }
                 )
-                messages.success(request, f"✅ تمت إضافة {product.name} بكمية {qty} {product.get_unit_display()} للطلبية القياسية.")
+                messages.success(request, f"✅ تمت إضافة {product.name} بكمية {qty} للطلبية القياسية.")
             return redirect("set_standard_request")
 
         # ✏️ تحديث كمية منتج واحد
         elif "update_item" in request.POST:
-            std_id = request.POST.get("request_id") or request.POST.get("update_item")
-            new_qty_raw = request.POST.get(f"new_quantity_{std_id}") or request.POST.get("new_quantity")
-
-            try:
-                new_qty = Decimal(str(new_qty_raw)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-            except Exception:
-                new_qty = Decimal('1.00')
-
-            if std_id and new_qty > 0:
+            std_id = request.POST.get("request_id")
+            new_qty = request.POST.get("new_quantity")
+            if std_id and new_qty:
                 try:
                     sr = StandardRequest.objects.get(id=std_id, branch=branch, stamp_type="order")
-                    sr.default_quantity = new_qty
+                    sr.default_quantity = int(new_qty)
                     sr.save()
-                    messages.success(request, f"✏️ تم تعديل {sr.product.name} إلى {new_qty} {sr.product.get_unit_display()}.")
                 except StandardRequest.DoesNotExist:
-                    messages.error(request, "❌ لم يتم العثور على العنصر المطلوب.")
+                    pass
             return redirect("set_standard_request")
 
         # 🗑️ حذف منتج واحد
@@ -1968,7 +1855,6 @@ def set_standard_request(request):
             std_id = request.POST.get("request_id")
             if std_id:
                 StandardRequest.objects.filter(id=std_id, branch=branch, stamp_type="order").delete()
-                messages.success(request, "🗑️ تم حذف المنتج بنجاح.")
             return redirect("set_standard_request")
 
         # 🗑️ حذف المحدد
@@ -1994,13 +1880,6 @@ def set_standard_request(request):
     standard_items = StandardRequest.objects.filter(
         branch=branch, stamp_type="order"
     ).select_related("product__category").order_by("product__category__name", "product__name")
-
-    # 🔹 ضبط عرض القيم بدقة
-    for item in standard_items:
-        if item.product.unit == "kg":
-            item.display_quantity = item.default_quantity.quantize(Decimal('0.01'))
-        else:
-            item.display_quantity = int(item.default_quantity)
 
     return render(request, "orders/set_standard_request.html", {
         "products": products,

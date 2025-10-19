@@ -5,9 +5,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.contrib.auth.models import User
 from django.utils import timezone
-from decimal import Decimal
-from django.core.validators import MinValueValidator
-from django.core.exceptions import ValidationError
+
 #-----------------------------------------------------------
 class Category(models.Model):
     name = models.CharField(max_length=100)
@@ -64,12 +62,7 @@ class Branch(models.Model):
 class Inventory(models.Model):
     branch = models.ForeignKey(Branch, on_delete=models.CASCADE)
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
-    quantity = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        default=Decimal('0.00'),
-        validators=[MinValueValidator(Decimal('0.00'))]
-    )
+    quantity = models.IntegerField(default=0)
 
     class Meta:
         unique_together = ('branch', 'product')
@@ -101,25 +94,24 @@ class Reservation(models.Model):
     )
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     branch = models.ForeignKey(Branch, on_delete=models.CASCADE)
-    quantity = models.DecimalField(
-        max_digits=12, decimal_places=2, default=Decimal('1.00'),
-        validators=[MinValueValidator(Decimal('0.00'))]
-    )
+    quantity = models.PositiveIntegerField(default=1)
     delivery_type = models.CharField(max_length=20, choices=DELIVERY_CHOICES)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
 
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True)   # وقت إنشاء الحجز
     reserved_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True, related_name="reservations_created"
-    )
+    )  # مين عمل الحجز (كول سنتر أو أدمن)
 
-    decision_at = models.DateTimeField(null=True, blank=True)
+    decision_at = models.DateTimeField(null=True, blank=True)  # أول قرار للفرع (تأكيد/إلغاء)
 
+    # ⬇️ وقت آخر تعديل من الفرع
     branch_last_modified_at = models.DateTimeField(null=True, blank=True)
     branch_last_modified_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True, related_name="branch_modified_reservations"
     )
 
+    # ⬇️ وقت آخر تعديل من الأدمن
     admin_last_modified_at = models.DateTimeField(null=True, blank=True)
     admin_last_modified_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True, related_name="admin_modified_reservations"
@@ -128,21 +120,10 @@ class Reservation(models.Model):
     def __str__(self):
         return f"{self.customer} - {self.product} - {self.status}"
 
-    def clean(self):
-        super().clean()
-        # تأمين: تأكد المنتج موجود قبل التحقق من وحدته
-        unit = getattr(self.product, "unit", None)
-        if unit == 'piece':
-            # Decimal modulo works؛ إذا الباقي ≠ 0 فموجود كسور
-            if (self.quantity % 1) != 0:
-                raise ValidationError({"quantity": "هذا المنتج لا يقبل كسورًا. استخدم عددًا صحيحًا."})
-
-    def save(self, *args, **kwargs):
-        self.full_clean()
-        super().save(*args, **kwargs)
-
     def confirm(self, user=None, is_admin=False):
+        """تأكيد الحجز"""
         self.status = "confirmed"
+        # أول قرار يتسجل في decision_at لو لسه فاضي
         self.decision_at = self.decision_at or timezone.now()
         if user:
             if is_admin:
@@ -154,6 +135,7 @@ class Reservation(models.Model):
         self.save()
 
     def cancel(self, user=None, is_admin=False):
+        """إلغاء الحجز"""
         self.status = "cancelled"
         self.decision_at = self.decision_at or timezone.now()
         if user:
@@ -164,6 +146,7 @@ class Reservation(models.Model):
                 self.branch_last_modified_at = timezone.now()
                 self.branch_last_modified_by = user
         self.save()
+
 #-------------------------------------------------------------------
 class InventoryTransaction(models.Model):
     TRANSACTION_TYPES = [
@@ -176,10 +159,15 @@ class InventoryTransaction(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     from_branch = models.ForeignKey(Branch, on_delete=models.SET_NULL, null=True, blank=True, related_name="transactions_from")
     to_branch = models.ForeignKey(Branch, on_delete=models.SET_NULL, null=True, blank=True, related_name="transactions_to")
-    quantity = models.DecimalField(max_digits=12, decimal_places=2)
+    quantity = models.IntegerField()
     transaction_type = models.CharField(max_length=20, choices=TRANSACTION_TYPES)
     created_at = models.DateTimeField(auto_now_add=True)
+
+     # 👇 الجديد
     added_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.transaction_type} - {self.product.name} ({self.quantity})"
 #-----------------------------------------------------------
 class UserProfile(models.Model):
     ROLE_CHOICES = [
@@ -219,10 +207,7 @@ class DailyRequest(models.Model):
     branch = models.ForeignKey(Branch, on_delete=models.CASCADE)
     category = models.ForeignKey("Category", on_delete=models.CASCADE, null=True, blank=True)
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
-    quantity = models.DecimalField(
-        max_digits=12, decimal_places=2, default=Decimal('1.00'),
-        validators=[MinValueValidator(Decimal('0.00'))]
-    )
+    quantity = models.PositiveIntegerField()
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     order_number = models.CharField(max_length=50) # 🔑 رقم الطلبية
@@ -264,18 +249,15 @@ class StandardRequest(models.Model):
         ("inventory", "تحديث مخزون"),
     ]
 
-    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name="standard_requests")
+    branch = models.ForeignKey("orders.Branch", on_delete=models.CASCADE, related_name="standard_requests")
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
-    default_quantity = models.DecimalField(
-        max_digits=12, decimal_places=2, default=Decimal('1.00'),
-        validators=[MinValueValidator(Decimal('0.00'))]
-    )
-    stamp_type = models.CharField(max_length=20, choices=STAMP_TYPES, default="order")
+    default_quantity = models.PositiveIntegerField(default=1)
+    stamp_type = models.CharField(max_length=20, choices=STAMP_TYPES, default="order")  # 👈 جديد
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ("branch", "product", "stamp_type")
+        unique_together = ("branch", "product", "stamp_type")  # 👈 علشان كل نوع مستقل
 
     def __str__(self):
         return f"{self.branch.name} - {self.get_stamp_type_display()} - {self.product.name} ({self.default_quantity})"

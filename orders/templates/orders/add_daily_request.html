@@ -78,8 +78,8 @@
         <input type="hidden" name="product" id="productInput">
         <input type="number" name="quantity" id="quantityInput"
                class="form-control text-center fw-bold"
-               style="max-width:150px; font-size:1.2rem;" min="1"
-               required placeholder="الكمية" autofocus>
+               style="max-width:150px; font-size:1.2rem;"
+               min="0.01" step="0.01" required placeholder="الكمية" autofocus>
         <span id="unitLabel" class="fw-bold text-primary" style="font-size:1.1rem;"></span>
         <button type="submit" name="add_item" class="btn btn-success btn-lg px-4">
           ➕ إضافة
@@ -132,7 +132,10 @@
                   <form method="post" class="d-flex gap-2 m-0 p-0">
                     {% csrf_token %}
                     <input type="hidden" name="request_id" value="{{ r.id }}">
-                    <input type="number" name="new_quantity" value="{{ r.quantity }}" min="1"
+                    <input type="number"
+                           name="new_quantity"
+                           value="{% if r.product.get_unit_display == 'كيلو' %}{{ r.quantity|stringformat:'.2f' }}{% else %}{{ r.quantity|floatformat:0 }}{% endif %}"
+                           {% if r.product.get_unit_display == 'كيلو' %}min="0.01" step="0.01"{% else %}min="1" step="1"{% endif %}
                            class="form-control form-control-sm text-center" style="width: 80px;">
                     <button type="submit" name="update_item" class="btn btn-warning btn-sm px-3">✏️</button>
                   </form>
@@ -198,13 +201,30 @@ function selectProduct(btn) {
   const productId = btn.dataset.productId;
   const productName = btn.dataset.productName;
   const unit = btn.dataset.unit;
+
+  const quantityInput = document.getElementById("quantityInput");
+
+  // 🔒 أولاً: إعادة تعيين step/min افتراضيًا إلى القيم العشرية
+  quantityInput.min = "0.01";
+  quantityInput.step = "0.01";
+
+  // 🟢 ضبط min و step حسب نوع الوحدة
+  if (unit === "كيلو" || unit.toLowerCase().includes("kg")) {
+    quantityInput.min = "0.01";
+    quantityInput.step = "0.01";
+  } else {
+    quantityInput.min = "1";
+    quantityInput.step = "1";
+  }
+
   document.getElementById("productInput").value = productId;
   document.getElementById("selectedProductName").textContent = productName;
   document.getElementById("unitLabel").textContent = unit;
   document.getElementById("quantitySection").classList.remove("d-none");
-  document.getElementById("quantityInput").focus();
-}
 
+  quantityInput.value = "";
+  quantityInput.focus();
+}
 // 🔹 تحديد الكل / إلغاء التحديد
 document.addEventListener("DOMContentLoaded", function() {
   const selectAll = document.getElementById("selectAll");

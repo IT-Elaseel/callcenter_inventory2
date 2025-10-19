@@ -39,22 +39,15 @@
             <td><input type="checkbox" name="selected_items" value="{{ row.product.id }}"></td>
             <td class="fw-bold">{{ row.product.name }}</td>
             <td style="vertical-align: middle;">
-              <input type="number"
-                     name="quantities[{{ row.product.id }}]"
-                     value="{{ row.quantity|stringformat:'.2f' }}"
-                     {% if row.product.unit == 'kg' %}
-                       min="0.01" step="0.01"
-                     {% else %}
-                       min="1" step="1"
-                     {% endif %}
-                     class="form-control form-control-sm text-center fw-bold"
-                     style="width: 90px; height: 32px;">
+              <input type="number" name="quantities[{{ row.product.id }}]" value="{{ row.quantity }}" min="0"
+                     class="form-control form-control-sm text-center fw-bold" style="width: 90px; height: 32px;">
+            </td>
             <td><span class="badge bg-secondary">{{ row.product.get_unit_display }}</span></td>
             <td>
             <form method="post" class="d-flex justify-content-center align-items-center gap-2 m-0 p-0">
               {% csrf_token %}
               <input type="hidden" name="request_id" value="{{ row.product.id }}">
-              <input type="hidden" name="new_quantity" value="{{ row.quantity|floatformat:2 }}">
+              <input type="hidden" name="new_quantity" value="{{ row.quantity }}">
 
               <button type="submit" name="update_item" class="btn btn-warning btn-sm px-3 py-1">✏️</button>
               <button type="submit" name="delete_item" class="btn btn-danger btn-sm px-3 py-1">🗑️</button>
@@ -129,9 +122,7 @@
               <form method="post" class="d-flex justify-content-center gap-2 mt-2">
                 {% csrf_token %}
                 <input type="hidden" name="product" value="{{ p.id }}">
-                <input type="number" min="0" name="quantity" class="form-control text-center"
-                   style="width:100px;" placeholder="كمية" value="1"
-                   step="{% if p.unit == 'kg' %}0.01{% else %}1{% endif %}">
+                <input type="number" min="0" name="quantity" class="form-control text-center" style="width:100px;" placeholder="كمية" value="1">
                 <button class="btn btn-primary" type="submit" name="add_item">➕ إضافة لأعلى</button>
               </form>
             </div>
