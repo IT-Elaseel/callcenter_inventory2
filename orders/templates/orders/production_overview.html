@@ -1,0 +1,115 @@
+{% extends "orders/base.html" %}
+{% block title %}تجميعة طلبات الإنتاج{% endblock %}
+{% block content %}
+<div class="container mt-4" style="max-width: 1000px;">
+  <div class="card shadow border-0">
+    <div class="card-header bg-primary text-white text-center">
+      <h4 class="mb-0">📦 تجميعة طلبات الإنتاج — {{date}}</h4>
+    </div>
+    <div class="card-body">
+
+      <!-- 🔍 الفلاتر -->
+      <!-- <form method="get" class="row g-2 align-items-center justify-content-center mb-4">
+        <div class="col-md-3">
+          <label class="form-label mb-1">📅 التاريخ:</label>
+          <input type="date" name="date" class="form-control" value="{{date}}">
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label mb-1">🏬 الفرع:</label>
+          <select name="branch" class="form-select">
+            <option value="">كل الفروع</option>
+            {% for b in branches %}
+              <option value="{{b.id}}" {% if branch_filter == b.id|stringformat:'s' %}selected{% endif %}>{{b.name}}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-md-3 d-flex align-items-center justify-content-center">
+          <input type="checkbox" name="hide_zero" value="1" id="hide_zero" {% if hide_zero %}checked{% endif %}>
+          <label for="hide_zero" class="ms-2">إخفاء المنتجات ذات الكمية صفر</label>
+        </div>
+
+        <div class="col-md-2 d-grid">
+          <button class="btn btn-primary">تطبيق</button>
+        </div>
+      </form> -->
+      <form method="get" class="row g-2 align-items-center justify-content-center mb-4">
+  <div class="col-md-3">
+    <label class="form-label mb-1">📅 التاريخ:</label>
+    <input type="date" name="date" class="form-control" value="{{date}}">
+  </div>
+
+  <div class="col-md-3">
+    <label class="form-label mb-1">🏬 الفرع:</label>
+    <select name="branch" class="form-select">
+      <option value="">كل الفروع</option>
+      {% for b in branches %}
+        <option value="{{b.id}}" {% if branch_filter == b.id|stringformat:'s' %}selected{% endif %}>{{b.name}}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="col-md-3">
+    <label class="form-label mb-1">📂 القسم:</label>
+    <select name="category" class="form-select">
+      <option value="">كل الأقسام</option>
+      {% for c in categories %}
+        <option value="{{c.id}}" {% if category_filter == c.id|stringformat:'s' %}selected{% endif %}>{{c.name}}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="col-md-3 d-flex align-items-center justify-content-center">
+    <input type="checkbox" name="hide_zero" value="1" id="hide_zero" {% if hide_zero %}checked{% endif %}>
+    <label for="hide_zero" class="ms-2">إخفاء المنتجات ذات الكمية صفر</label>
+  </div>
+
+  <div class="col-md-2 d-grid">
+    <button class="btn btn-primary">تطبيق</button>
+  </div>
+</form>
+
+
+      <div class="text-end mb-2">
+        <a class="btn btn-success btn-sm"
+           href="{% url 'export_production_excel' %}?date={{date}}{% if branch_filter %}&branch={{branch_filter}}{% endif %}{% if category_filter %}&category={{category_filter}}{% endif %}{% if hide_zero %}&hide_zero=1{% endif %}">
+          ⬇️ تنزيل Excel
+        </a>
+      </div>
+
+      <!-- 📋 جدول -->
+      <div class="table-responsive">
+        <table class="table table-bordered table-hover align-middle text-center">
+          <thead class="table-light">
+            <tr>
+              <th>المنتج</th>
+              <th>الوحدة</th>
+              {% if branch_filter %}
+                <th>{{branch_name}}</th>
+              {% else %}
+                {% for b in branches %}<th>{{b.name}}</th>{% endfor %}
+              {% endif %}
+              <th>الإجمالي</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in rows %}
+              <tr>
+                <td>{{r.product.name}}</td>
+                <td>{{r.unit}}</td>
+                {% for q in r.per_branch %}
+                  <td>{{q}}</td>
+                {% endfor %}
+                <td class="fw-bold">{{r.total}}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="5" class="text-center text-muted">لا توجد بيانات.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

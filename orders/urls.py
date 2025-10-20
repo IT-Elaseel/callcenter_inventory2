@@ -41,6 +41,11 @@ urlpatterns = [
     # path("inventory/select-stamp/", views.select_stamp_page, name="select_stamp_page"),
     # path("inventory/select-stamp/<int:stamp_id>/", views.select_stamp, name="select_stamp"),
     path("inventory/set-stamp/", views.set_inventory_stamp, name="set_inventory_stamp"),
+    path("production/set-items/", views.set_production_items, name="set_production_items"),
+    path("production/request/", views.add_production_request, name="add_production_request"),
+    path("production/overview/", views.production_overview, name="production_overview"),
+    path("production/overview/export/", views.export_production_excel, name="export_production_excel"),
+
 
 
 ]

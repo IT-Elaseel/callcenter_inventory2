@@ -2,8 +2,8 @@
 # 📌 Python Standard Library
 # ==============================================
 from datetime import datetime, timedelta
+from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 from urllib.parse import urlencode
-
 # ==============================================
 # 📌 Third-party Libraries
 # ==============================================
@@ -13,52 +13,46 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
-
 # ==============================================
 # 📌 Django Imports
 # ==============================================
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth import (authenticate, login, logout, update_session_auth_hash)
+from django.contrib.auth import (
+    authenticate, login, logout, update_session_auth_hash
+)
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.models import User
 from django.core.paginator import Paginator
+from django.db import transaction
 from django.db.models import Q, Count
-from django.http import (HttpResponse, JsonResponse, HttpResponseForbidden)
-from django.shortcuts import render, redirect, get_object_or_404
+from django.http import (
+    HttpResponse, JsonResponse, HttpResponseForbidden
+)
+from django.shortcuts import (
+    render, redirect, get_object_or_404
+)
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.timezone import now, localdate
 from django.views.decorators.http import require_POST
-
 # ==============================================
 # 📌 Local Application Imports
 # ==============================================
 from .decorators import role_required
-from .forms import (CategoryForm, ProductForm, BranchForm,UserCreateForm, ArabicPasswordChangeForm)
-from .models import (Category, Product, Inventory, Reservation,Branch, Customer, InventoryTransaction,DailyRequest, OrderCounter)
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from django.db import transaction
-from django.http import JsonResponse
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import render
-from django.contrib import messages
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
-from .models import Product, Branch, Category, Inventory, Reservation, Customer
-
-from decimal import Decimal, ROUND_HALF_UP
-from django.shortcuts import get_object_or_404
-from django.db import transaction
-from django.http import JsonResponse
-from django.utils import timezone
-from .models import Product, Category, SecondCategory, DailyRequest, StandardRequest
-from django.utils import timezone
-from channels.layers import get_channel_layer
-from asgiref.sync import async_to_sync
-
+from .forms import (
+    CategoryForm, ProductForm, BranchForm,
+    UserCreateForm, ArabicPasswordChangeForm
+)
+from .models import (
+    Category, Product, Branch, SecondCategory,
+    Inventory, Reservation, Customer,
+    InventoryTransaction, DailyRequest,
+    OrderCounter, StandardRequest,
+    ProductionTemplate, ProductionRequest
+)
 def to_decimal_safe(value, places=2):
     """حوّل أي قيمة إلى Decimal مقنّن بعدد أماكن عشرية (افتراضي 2)."""
     try:
@@ -67,7 +61,11 @@ def to_decimal_safe(value, places=2):
         return d.quantize(quant, rounding=ROUND_HALF_UP)
     except (InvalidOperation, TypeError, ValueError):
         return Decimal('0').quantize(Decimal('1').scaleb(-places))
-#------------------------------التحقق من المستخدم ادمن اول لا-------------------------------------
+#-----------------------------------------------------
+def unit_allows_fraction(unit: str) -> bool:
+    """يسمح بالكسور لو الوحدة 'kg' فقط."""
+    return (unit or "").lower() == "kg"
+#-----------------------التحقق من المستخدم ادمن اول لا-------
 def is_admin(user):
     return (
         user.is_superuser
@@ -76,8 +74,7 @@ def is_admin(user):
     )
 def is_control(user):
     return user.is_authenticated and user.userprofile.role == "control"
-
-#---------------------------------------------تصدير الحجوزات الى اكسيل----------------------------------------------------------
+#-----تصدير الحجوزات الى اكسيل-----------------------------
 def export_reservations_excel(request, branch_id):
     reservations = Reservation.objects.filter(branch_id=branch_id).select_related("product", "branch", "customer").order_by("-created_at")
 
@@ -108,10 +105,7 @@ def export_reservations_excel(request, branch_id):
     response["Content-Disposition"] = f'attachment; filename="reservations_branch_{branch_id}.xlsx"'
     wb.save(response)
     return response
-#-------------------------------------------------------------------------------------------------------
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
-
+#-------------------------------------------------------------
 def broadcast_new_reservation(reservation, qty=1, user=None):
     """دالة موحدة لبث الحجز الجديد لجميع الفروع"""
     channel_layer = get_channel_layer()
@@ -277,7 +271,7 @@ def callcenter(request):
         "selected_category": int(category_id) if category_id else None,
         "query": query,
     })
-#----------------------------قايمه الحجوزات---------------------------------
+#----------------------------قايمه الحجوزات------------------
 @login_required
 def reservations_list(request):
     from datetime import date as dt_date
@@ -335,14 +329,6 @@ def reservations_list(request):
         },
     )
 #-------------------------------------------------------------
-from django.shortcuts import get_object_or_404, redirect
-from django.contrib import messages
-from django.utils import timezone
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
-from .models import Reservation
-
-
 def update_reservation_status(request, res_id, status):
     reservation = get_object_or_404(Reservation, id=res_id)
     profile = getattr(request.user, "userprofile", None)
@@ -601,7 +587,7 @@ def branch_dashboard(request):
             "is_admin": False,
         },
     )
-#-------------------------------------------------------------------
+#--------------------------------------------------------------
 def login_view(request):
     if request.method == "POST":
         username = request.POST.get("username")
@@ -624,11 +610,11 @@ def login_view(request):
         else:
             return render(request, "orders/login.html", {"error": "❌ بيانات الدخول غير صحيحة"})
     return render(request, "orders/login.html")
-#-------------------------------------------------------------------
+#--------------------------------------------------------------
 def logout_view(request):
     logout(request)
     return redirect("login")
-#-------------------------------------------------------------------
+#--------------------------------------------------------------
 def root_redirect(request):
     if not request.user.is_authenticated:
         return redirect("login")
@@ -652,7 +638,7 @@ def root_redirect(request):
 
     # fallback لو مفيش role
     return redirect("login")
-#-------------------------------------------------------------------
+#--------------------------------------------------------------
 @login_required
 @role_required(["branch", "admin"])
 def export_inventory_excel(request, branch_id=None):
@@ -722,8 +708,7 @@ def export_inventory_excel(request, branch_id=None):
     response["Content-Disposition"] = f'attachment; filename="{branch.name}_inventory.xlsx"'
     wb.save(response)
     return response
-#-------------------------------------------------------------------
-@login_required
+#--------------------------------------------------------------
 @role_required(["admin", "callcenter"])
 def customers_list(request):
     query = request.GET.get("q")
@@ -740,7 +725,7 @@ def customers_list(request):
     return render(request, "orders/customers_list.html", {
         "customers": customers_page,
     })
-#-------------------------------------------------------------------
+#---------------------------------------------------------------
 def landing(request):
     error_message = None
 
@@ -756,15 +741,7 @@ def landing(request):
         form = AuthenticationForm()
 
     return render(request, "orders/landing.html", {"form": form, "login_error": error_message})
-#-------------------------------------------------------------------------------------------------------
-from channels.layers import get_channel_layer
-from asgiref.sync import async_to_sync
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import render, redirect
-from django.contrib import messages
-from django.http import JsonResponse
-from .decorators import role_required
-from .models import Product, Category, SecondCategory, StandardRequest, Inventory, InventoryTransaction
+#---------------------------------------------------------------
 def _get_worklist(request):
     """
     ترجع dict بالشكل: {product_id(str): qty_str}
@@ -786,8 +763,7 @@ def _get_worklist(request):
     request.session["inventory_worklist"] = clean
     request.session.modified = True
     return clean
-
-
+#---------------------------------------------------------------
 def _save_worklist(request, wl_dict):
     """
     يتوقع wl_dict شكل: {pid: qty_str_or_number}
@@ -807,7 +783,7 @@ def _save_worklist(request, wl_dict):
             continue
     request.session["inventory_worklist"] = safe_dict
     request.session.modified = True
-#-------------------------------------------------------------------------------------------------------
+#---------------------------------------------------------------
 @login_required
 @role_required(["branch"])
 def update_inventory(request):
@@ -1066,14 +1042,7 @@ def update_inventory(request):
             "work_items": work_items,
         },
     )
-#-------------------------------------------------------------------------------------------------------
-from django.utils import timezone
-from django.contrib import messages
-from django.contrib.auth.decorators import login_required
-from .decorators import role_required
-from django.shortcuts import render, redirect
-from .models import Product, Category, SecondCategory, StandardRequest
-
+#---------------------------------------------------------------
 @login_required
 @role_required(["branch"])
 def set_inventory_stamp(request):
@@ -1166,7 +1135,7 @@ def set_inventory_stamp(request):
         "selected_category": selected_category,
         "page_title": "استامبا تحديث المخزون"
     })
-#-------------------------------------------------------------------------------------------------------
+#----------------------------------------------------------------
 @login_required
 @role_required(["branch", "admin"])
 def inventory_transactions(request):
@@ -1255,7 +1224,7 @@ def inventory_transactions(request):
             "today": today,   # ✅ علشان نستخدمه في max
         },
     )
-#-------------------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------
 @login_required
 @role_required(["branch", "admin", "callcenter"])
 def branch_inventory(request):
@@ -1316,7 +1285,7 @@ def branch_inventory(request):
             "query": query,
         },
     )
-#-------------------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------
 @login_required
 @role_required(["callcenter", "admin"])
 def use_customer(request, customer_id):
@@ -1334,7 +1303,7 @@ def use_customer(request, customer_id):
     messages.success(request, f"✅ تم اختيار العميل {customer.name} ({customer.phone})")
 
     return redirect("customers_list")
-#-------------------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------
 @login_required
 @role_required(["callcenter", "admin"])
 def add_customer(request):
@@ -1348,7 +1317,7 @@ def add_customer(request):
         return redirect("customers_list")
 
     return render(request, "orders/add_customer.html")
-#-------------------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------
 @login_required
 @role_required(["callcenter"])
 def resolve_conflict(request):
@@ -1412,8 +1381,7 @@ def resolve_conflict(request):
         return redirect("callcenter_dashboard")
 
     return redirect("callcenter_dashboard")
-#-------------------------------------------------------------------------------------------------------
-# شرط يفتح الصفحة بس لو هو أدمن
+#-----------------------------------------------------------------
 @login_required
 @user_passes_test(is_admin)
 def add_user_view(request):
@@ -1425,7 +1393,7 @@ def add_user_view(request):
     else:
         form = UserCreateForm()
     return render(request, "orders/add_user.html", {"form": form})
-#-------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------
 @login_required
 def change_password(request):
     form = ArabicPasswordChangeForm(user=request.user, data=request.POST or None)
@@ -1447,7 +1415,7 @@ def change_password(request):
         })
 
     return redirect("home")
-#-------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------
 @login_required
 @user_passes_test(is_admin)
 def manage_data(request):
@@ -1499,7 +1467,7 @@ def manage_data(request):
         "branches": branches,
         "success_message": success_message,
     })
-#-------------------------------------------------------------------------------------------------------
+#------------------------------------------------------------------
 @login_required
 @user_passes_test(is_admin)
 def manage_users(request):
@@ -1539,7 +1507,7 @@ def manage_users(request):
         "username": username,
         "role": role,
     })
-#-------------------------------------------------------------------------------------------------------
+#---------------------------------------------------------------
 @login_required
 @user_passes_test(is_admin)
 def edit_category(request, pk):
@@ -1565,7 +1533,7 @@ def edit_category(request, pk):
         "success": success,
         "redirect_url": reverse("view_data") + query_string,
     })
-#-------------------------------------------------------------------------------------------------------
+#------------------------------------------------------------------
 @login_required
 @user_passes_test(is_admin)
 def edit_product(request, pk):
@@ -1591,7 +1559,7 @@ def edit_product(request, pk):
         "success": success,
         "redirect_url": reverse("view_data") + query_string,
     })
-#-------------------------------------------------------------------------------------------------------
+#------------------------------------------------------------------
 @login_required
 @user_passes_test(is_admin)
 def edit_branch(request, pk):
@@ -1616,10 +1584,7 @@ def edit_branch(request, pk):
         "success": success,
         "redirect_url": reverse("view_data") + query_string,
     })
-#-------------------------------------------------------------------------------------------------------
-from django.contrib.auth.decorators import login_required, user_passes_test
-from django.shortcuts import render
-from .models import Category, Product, Branch, SecondCategory
+#------------------------------------------------------------------
 @login_required
 @user_passes_test(is_admin)
 def view_data(request):
@@ -1676,10 +1641,7 @@ def view_data(request):
         "availability": availability,   # ✅ مهم عشان نستخدمه في HTML
         "success_message": success_message,
     })
-#-------------------------------------------------------------------------------------------------------
-from django.http import JsonResponse
-from django.views.decorators.http import require_POST
-
+#-----------------------------------------------------------------
 @require_POST
 @login_required
 @user_passes_test(is_admin)
@@ -1692,15 +1654,12 @@ def toggle_product_availability(request, pk):
         return JsonResponse({"success": True, "new_status": product.is_available})
     except Product.DoesNotExist:
         return JsonResponse({"success": False, "error": "المنتج غير موجود"})
-#-------------------------------------------------------------------------------------------------------
-from django.http import JsonResponse
-from .models import SecondCategory
-
+#-----------------------------------------------------
 def get_subcategories(request):
     main_id = request.GET.get("main_id")
     subcategories = SecondCategory.objects.filter(main_category_id=main_id).values("id", "name")
     return JsonResponse(list(subcategories), safe=False)
-#-------------------------------------------------------------------------------------------------------
+#------------------------------------------------------
 @login_required
 def add_daily_request(request):
     profile2 = getattr(request.user, "userprofile", None)
@@ -1895,13 +1854,7 @@ def add_daily_request(request):
         "order_number": order_number,
         "selected_category": selected_category,
     })
-
-
-#----------------------------------------------------------------
-from django.contrib import messages
-from .models import Product, Category, SecondCategory, StandardRequest
-from django.utils import timezone
-
+#------------------------------------------------------
 @login_required
 @role_required(["branch"])
 def set_standard_request(request):
@@ -2010,7 +1963,7 @@ def set_standard_request(request):
         "selected_category": selected_category,
         "page_title": "الطلبية القياسية"
     })
-#----------------------------------------------------------------
+#-------------------------------------------------------
 @login_required
 def control_requests(request):
     profile = getattr(request.user, "userprofile", None)
@@ -2059,7 +2012,7 @@ def control_requests(request):
         "selected_branch": branch_id,
         "printed_filter": printed_filter,
     })
-#-------------------------sockets-------------------------------------------------------------------------
+#-------------------------sockets-----------------------
 @login_required
 def control_requests_data(request):
     """ترجع HTML الطلبات فقط لتحديث الصفحة عبر AJAX"""
@@ -2090,7 +2043,7 @@ def control_requests_data(request):
     }, request=request)
 
     return JsonResponse({"html": html})
-#-------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------
 @require_POST
 @login_required
 def mark_printed(request, order_number):
@@ -2114,7 +2067,7 @@ def mark_printed(request, order_number):
     )
 
     return JsonResponse({"status": "ok"})
-#-------------------------------------------------------------------------------------------------------
+#------------------------------------------------------
 @login_required
 def branch_requests(request):
     profile = getattr(request.user, "userprofile", None)
@@ -2166,15 +2119,6 @@ def branch_requests(request):
         "branch": branch,
     })
 #-----------------------------------------------------
-from decimal import Decimal, InvalidOperation
-import openpyxl
-from django.contrib import messages
-from django.shortcuts import redirect, render
-from django.contrib.auth.decorators import login_required
-from .models import Product, Category, SecondCategory
-from .decorators import role_required
-
-
 @login_required
 @role_required(["admin"])
 def import_products(request):
@@ -2296,3 +2240,616 @@ def import_products(request):
 
     # 📄 GET → عرض الصفحة
     return render(request, "orders/import_products.html")
+#-----------------------------------------------------
+@login_required
+@role_required(["control", "admin"])
+def set_production_items(request):
+    query = request.GET.get("q", "").strip()
+    selected_cat = request.GET.get("category", "").strip()
+    # current_cat = request.GET.get("current_cat", "").strip()
+    # 👇 خليه ياخد من POST أولاً، أو من GET لو مش موجود
+    current_cat = request.POST.get("current_cat", request.GET.get("current_cat", "")).strip()
+
+    # الأقسام كلها متاحة للفلترة (اللي فوق)
+    categories = Category.objects.all().order_by("name")
+
+    # المنتجات المتاحة للإضافة
+    products_qs = Product.objects.filter(is_available=True).select_related("category")
+    if selected_cat:
+        products_qs = products_qs.filter(category_id=selected_cat)
+    if query:
+        products_qs = products_qs.filter(name__icontains=query)
+
+    # العناصر الحالية في جدول الإنتاج
+    current_items = ProductionTemplate.objects.select_related("product", "product__category").order_by(
+        "product__category__name", "product__name"
+    )
+    if current_cat:
+        current_items = current_items.filter(product__category_id=current_cat)
+
+    # 🔥 الأقسام اللي فيها منتجات مضافة فقط (عشان فلتر الجدول)
+    current_item_categories = Category.objects.filter(
+        products__in=Product.objects.filter(production_templates__isnull=False)
+    ).distinct().order_by("name")
+
+
+    current_product_ids = set(current_items.values_list("product_id", flat=True))
+
+    if request.method == "POST":
+        q = request.POST.get("q", "")
+        cat = request.POST.get("category", "")
+        current_cat = request.POST.get("current_cat", current_cat)
+        redirect_url = f"{reverse('set_production_items')}?q={q}&category={cat}&current_cat={current_cat}"
+
+        if "add_product" in request.POST:
+            pid = request.POST.get("product_id")
+            try:
+                p = Product.objects.get(id=pid)
+                ProductionTemplate.objects.get_or_create(product=p, defaults={"is_active": True})
+                messages.success(request, f"✅ تم إضافة {p.name} لقائمة الإنتاج.")
+            except Product.DoesNotExist:
+                messages.error(request, "❌ المنتج غير موجود.")
+            return redirect(redirect_url)
+
+        elif "toggle_item" in request.POST:
+            tid = request.POST.get("toggle_item")
+            try:
+                t = ProductionTemplate.objects.get(id=tid)
+                t.is_active = not t.is_active
+                t.save()
+                messages.success(request, f"🔁 تم تغيير حالة {t.product.name} إلى {'مفعل' if t.is_active else 'موقوف'}.")
+            except ProductionTemplate.DoesNotExist:
+                pass
+            return redirect(redirect_url)
+
+        elif "delete_item" in request.POST:
+            tid = request.POST.get("delete_item")
+            ProductionTemplate.objects.filter(id=tid).delete()
+            messages.success(request, "🗑️ تم حذف المنتج من قائمة الإنتاج.")
+            return redirect(redirect_url)
+
+        elif "delete_all" in request.POST:
+            ProductionTemplate.objects.all().delete()
+            messages.success(request, "🧹 تم حذف جميع المنتجات من قائمة الإنتاج.")
+            return redirect("set_production_items")
+
+        elif "delete_by_category" in request.POST:
+            if current_cat:
+                ProductionTemplate.objects.filter(product__category_id=current_cat).delete()
+                messages.success(request, "🧹 تم حذف المنتجات الخاصة بهذا القسم فقط.")
+            else:
+                messages.warning(request, "⚠️ لم يتم اختيار قسم حالي من الفلتر.")
+            return redirect(redirect_url)
+    return render(request, "orders/set_production_items.html", {
+        "products": products_qs,
+        "current_items": current_items,
+        "query": query,
+        "categories": categories,  # للفلاتر العليا (اختيار منتجات)
+        "current_item_categories": current_item_categories,  # للفلاتر أسفل الجدول
+        "selected_cat": selected_cat,
+        "current_cat": current_cat,
+        "current_product_ids": current_product_ids,
+    })
+#-----------------------------------------------------
+@login_required
+@role_required(["branch"])
+def add_production_request(request):
+    """
+    صفحة الفرع: نموذج يومي جاهز يحتوي على المنتجات التي يحددها الكنترول.
+    يدعم الفلترة حسب القسم، وكل قسم يتم تأكيده بشكل مستقل.
+    """
+    profile = getattr(request.user, "userprofile", None)
+    branch = profile.branch if profile else None
+    if not branch:
+        return render(request, "orders/no_permission.html", {
+            "error_message": "🚫 لا يوجد فرع مربوط بحسابك."
+        }, status=403)
+
+    today = localdate()
+
+    # الأقسام (للـ dropdown)
+    categories = Category.objects.filter(id__in=ProductionTemplate.objects.filter(is_active=True).values_list("product__category_id", flat=True)).order_by("name").distinct()
+
+    # فلترة حسب القسم
+    selected_cat = request.GET.get("category", "")
+    templates = ProductionTemplate.objects.filter(is_active=True).select_related("product", "product__category")
+
+    if selected_cat:
+        templates = templates.filter(product__category_id=selected_cat)
+
+    templates = templates.order_by("product__category__name", "product__name")
+
+    # لو مفيش عناصر محددة من الكنترول
+    if not templates.exists():
+        messages.warning(request, "⚠️ لا توجد منتجات محددة من الكنترول بعد أو لا توجد منتجات في هذا القسم.")
+        return render(request, "orders/add_production_request.html", {
+            "items": [],
+            "today": today,
+            "branch": branch,
+            "categories": categories,
+            "selected_cat": selected_cat,
+            "already_confirmed": False,
+        })
+
+    # هل الفرع أكد القسم ده النهارده؟
+    confirmed_products = ProductionRequest.objects.filter(
+        branch=branch, date=today, confirmed=True
+    ).values_list("product_id", flat=True)
+
+    existing = ProductionRequest.objects.filter(branch=branch, date=today).select_related("product")
+    existing_map = {pr.product_id: pr for pr in existing}
+
+    # POST
+    if request.method == "POST":
+        # لو فيه قسم محدد، استخدمه في الرابط بعد الحفظ
+        redirect_url = f"{reverse('add_production_request')}?category={selected_cat}"
+
+        # تأكد إن الفرع ما أكّدش القسم ده بالكامل قبل كده
+        already_confirmed_section = all(t.product_id in confirmed_products for t in templates)
+        if already_confirmed_section:
+            messages.error(request, "✅ تم تأكيد هذا القسم مسبقًا. لا يمكن التعديل.")
+            return redirect(redirect_url)
+
+        saved = 0
+        for t in templates:
+            pid = t.product_id
+            key = f"quantities[{pid}]"
+            raw = (request.POST.get(key) or "").strip()
+            q = to_decimal_safe(raw, places=2)
+            if q < 0:
+                q = Decimal("0.00")
+
+            if not unit_allows_fraction(t.product.unit):
+                q = q.to_integral_value(rounding=ROUND_HALF_UP)
+
+            obj, _ = ProductionRequest.objects.get_or_create(
+                branch=branch, product=t.product, date=today,
+                defaults={"quantity": Decimal("0.00"), "created_by": request.user}
+            )
+            obj.quantity = q
+            obj.created_by = request.user
+            obj.save()
+            saved += 1
+
+        # تأكيد القسم فقط
+        if "confirm" in request.POST:
+            now_ = timezone.now()
+            ProductionRequest.objects.filter(
+                branch=branch, date=today, product__in=[t.product for t in templates]
+            ).update(confirmed=True, confirmed_at=now_)
+            # إشعار الكنترول
+            layer = get_channel_layer()
+            async_to_sync(layer.group_send)(
+                "control_updates",
+                {
+                    "type": "control_update",
+                    "action": "production_confirmed",
+                    "message": f"✅ فرع {branch.name} أكد قسم {templates.first().product.category.name} لليوم.",
+                }
+            )
+            messages.success(request, f"✅ تم تأكيد قسم {templates.first().product.category.name} ({saved} صف).")
+            return redirect(redirect_url)
+
+        messages.success(request, f"💾 تم حفظ الكميات ({saved} صف) في قسم {templates.first().product.category.name}.")
+        return redirect(redirect_url)
+
+    # تجهيز عناصر العرض
+    items = []
+    for t in templates:
+        cur_qty = Decimal("0.00")
+        if t.product_id in existing_map:
+            cur_qty = to_decimal_safe(existing_map[t.product_id].quantity, places=2)
+            if not unit_allows_fraction(t.product.unit):
+                cur_qty = cur_qty.to_integral_value()
+        items.append({
+            "product": t.product,
+            "unit": t.product.get_unit_display(),
+            "quantity": cur_qty,
+            "is_confirmed": t.product_id in confirmed_products
+        })
+
+    # هل كل القسم مؤكد؟
+    already_confirmed_section = all(i["is_confirmed"] for i in items)
+
+    return render(request, "orders/add_production_request.html", {
+        "items": items,
+        "today": today,
+        "branch": branch,
+        "categories": categories,
+        "selected_cat": selected_cat,
+        "already_confirmed": already_confirmed_section,
+    })
+
+#-----------------------------------------------------
+@login_required
+@role_required(["control", "admin"])
+def production_overview(request):
+    """
+    الكنترول: عرض مجمع لطلبات إنتاج اليوم مع فلترة حسب التاريخ، الفرع أو القسم.
+    """
+    date_raw = request.GET.get("date")
+    branch_filter = request.GET.get("branch", "").strip()
+    category_filter = request.GET.get("category", "").strip()  # ✅ جديد
+    hide_zero = request.GET.get("hide_zero", "1") == "1"
+
+    try:
+        the_date = datetime.strptime(date_raw, "%Y-%m-%d").date() if date_raw else localdate()
+    except ValueError:
+        the_date = localdate()
+
+    # الفروع
+    branches = list(Branch.objects.all().order_by("name"))
+    if branch_filter:
+        branches = [b for b in branches if str(b.id) == branch_filter]
+
+    # الأقسام
+    categories = Category.objects.filter(
+            products__production_templates__is_active=True
+        ).distinct().order_by("name")
+
+    # الطلبات
+    pr_qs = ProductionRequest.objects.filter(date=the_date).select_related("product", "branch", "product__category")
+
+    # المنتجات الفعالة من قالب الكنترول
+    templates = ProductionTemplate.objects.filter(is_active=True).select_related("product", "product__category").order_by(
+        "product__category__name", "product__name"
+    )
+
+    # ✅ فلترة المنتجات حسب القسم لو المستخدم اختار قسم معين
+    if category_filter:
+        templates = templates.filter(product__category_id=category_filter)
+
+    products = [t.product for t in templates]
+
+    # خريطة كميات
+    cell = {}
+    for pr in pr_qs:
+        cell[(pr.product_id, pr.branch_id)] = to_decimal_safe(pr.quantity, places=2)
+
+    rows = []
+    grand_total = Decimal("0.00")
+    for p in products:
+        per_branch = []
+        row_total = Decimal("0.00")
+        for b in Branch.objects.all().order_by("name"):
+            if branch_filter and str(b.id) != branch_filter:
+                continue
+            q = cell.get((p.id, b.id), Decimal("0.00"))
+            if not unit_allows_fraction(p.unit):
+                q = q.to_integral_value()
+            per_branch.append(q)
+            row_total += Decimal(str(q))
+        if hide_zero and all(q == 0 for q in per_branch):
+            continue
+        grand_total += row_total
+        rows.append({
+            "product": p,
+            "unit": p.get_unit_display(),
+            "per_branch": per_branch,
+            "total": row_total
+        })
+
+    # اسم الفرع لو محدد
+    branch_name = None
+    if branch_filter:
+        try:
+            branch_name = Branch.objects.get(id=branch_filter).name
+        except Branch.DoesNotExist:
+            branch_name = None
+
+    return render(request, "orders/production_overview.html", {
+        "date": the_date.isoformat(),
+        "branches": Branch.objects.all().order_by("name"),
+        "categories": categories,  # ✅ جديد
+        "rows": rows,
+        "grand_total": grand_total,
+        "branch_filter": branch_filter,
+        "branch_name": branch_name,
+        "category_filter": category_filter,  # ✅ جديد
+        "hide_zero": hide_zero
+    })
+#-----------------------------------------------------
+# @login_required
+# @role_required(["control", "admin"])
+# def export_production_excel(request):
+#     date_raw = request.GET.get("date")
+#     try:
+#         the_date = datetime.strptime(date_raw, "%Y-%m-%d").date() if date_raw else localdate()
+#     except ValueError:
+#         the_date = localdate()
+#
+#     branches = list(Branch.objects.all().order_by("name"))
+#     templates = ProductionTemplate.objects.filter(is_active=True).select_related("product", "product__category").order_by(
+#         "product__category__name", "product__name"
+#     )
+#     products = [t.product for t in templates]
+#
+#     pr_qs = ProductionRequest.objects.filter(date=the_date).select_related("product", "branch")
+#     cell = {}
+#     for pr in pr_qs:
+#         cell[(pr.product_id, pr.branch_id)] = to_decimal_safe(pr.quantity, places=2)
+#
+#     wb = openpyxl.Workbook()
+#     ws = wb.active
+#     ws.title = f"Production {the_date.isoformat()}"
+#
+#     # Header
+#     headers = ["المنتج", "الوحدة"] + [b.name for b in branches] + ["الإجمالي"]
+#     ws.append(headers)
+#
+#     header_font = Font(bold=True, color="FFFFFF")
+#     header_fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
+#     align_center = Alignment(horizontal="center", vertical="center")
+#     thin_border = Border(left=Side(style="thin"), right=Side(style="thin"), top=Side(style="thin"), bottom=Side(style="thin"))
+#
+#     for col_idx, h in enumerate(headers, 1):
+#         c = ws.cell(row=1, column=col_idx)
+#         c.font = header_font
+#         c.fill = header_fill
+#         c.alignment = align_center
+#         c.border = thin_border
+#
+#     # Rows
+#     for p in products:
+#         row = [p.name, p.get_unit_display()]
+#         total = Decimal("0.00")
+#         for b in branches:
+#             q = cell.get((p.id, b.id), Decimal("0.00"))
+#             if not unit_allows_fraction(p.unit):
+#                 q = q.to_integral_value()
+#             row.append(q)
+#             total += Decimal(str(q))
+#         row.append(total)
+#         ws.append(row)
+#
+#     # Styling columns + borders
+#     for col in ws.columns:
+#         max_len = 0
+#         col_letter = col[0].column_letter
+#         for c in col:
+#             c.border = thin_border
+#             c.alignment = align_center
+#             if c.value:
+#                 max_len = max(max_len, len(str(c.value)))
+#         ws.column_dimensions[col_letter].width = max_len + 2
+#
+#     response = HttpResponse(
+#         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+#     )
+#     filename = f"production_{the_date.isoformat()}.xlsx"
+#     response["Content-Disposition"] = f'attachment; filename="{filename}"'
+#     wb.save(response)
+#     return response
+# @login_required
+# @role_required(["control", "admin"])
+# def export_production_excel(request):
+#     # تنظيف كل المتغيرات من المسافات والتفريغ الآمن
+#     date_raw = (request.GET.get("date") or "").strip()
+#     branch_filter = (request.GET.get("branch") or "").strip()
+#     category_filter = (request.GET.get("category") or "").strip()
+#     hide_zero = (request.GET.get("hide_zero") or "1").strip() == "1"
+#
+#     # معالجة التاريخ
+#     try:
+#         the_date = datetime.strptime(date_raw, "%Y-%m-%d").date() if date_raw else localdate()
+#     except ValueError:
+#         the_date = localdate()
+#
+#     # 🏬 الفروع (فلترة حسب الاختيار)
+#     branches = list(Branch.objects.all().order_by("name"))
+#     if branch_filter:
+#         branches = [b for b in branches if str(b.id) == branch_filter]
+#
+#     # 🧩 المنتجات الفعالة من قالب الكنترول (ومفلترة بالقسم إن وُجد)
+#     templates = ProductionTemplate.objects.filter(is_active=True).select_related("product", "product__category")
+#     if category_filter:
+#         templates = templates.filter(product__category_id=category_filter)
+#     templates = templates.order_by("product__category__name", "product__name")
+#
+#     products = [t.product for t in templates]
+#
+#     # 🗂️ الطلبات الفعلية حسب التاريخ فقط
+#     pr_qs = ProductionRequest.objects.filter(date=the_date).select_related("product", "branch")
+#
+#     # لو فيه فلتر فرع → نفلتر الطلبات به كمان
+#     if branch_filter:
+#         pr_qs = pr_qs.filter(branch_id=branch_filter)
+#
+#     # لو فيه فلتر قسم → نفلتر الطلبات كمان بنفس القسم
+#     if category_filter:
+#         pr_qs = pr_qs.filter(product__category_id=category_filter)
+#
+#     # 🧮 خريطة كميات
+#     cell = {}
+#     for pr in pr_qs:
+#         cell[(pr.product_id, pr.branch_id)] = to_decimal_safe(pr.quantity, places=2)
+#
+#     # 🧾 إنشاء ملف Excel
+#     wb = openpyxl.Workbook()
+#     ws = wb.active
+#     ws.title = f"Production {the_date.isoformat()}"
+#
+#     headers = ["المنتج", "الوحدة"] + [b.name for b in branches] + ["الإجمالي"]
+#     ws.append(headers)
+#
+#     header_font = Font(bold=True, color="FFFFFF")
+#     header_fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
+#     align_center = Alignment(horizontal="center", vertical="center")
+#     thin_border = Border(left=Side(style="thin"), right=Side(style="thin"),
+#                          top=Side(style="thin"), bottom=Side(style="thin"))
+#
+#     # 🎨 تهيئة رؤوس الجدول
+#     for col_idx, h in enumerate(headers, 1):
+#         c = ws.cell(row=1, column=col_idx)
+#         c.font = header_font
+#         c.fill = header_fill
+#         c.alignment = align_center
+#         c.border = thin_border
+#
+#     # 🧩 تعبئة البيانات
+#     for p in products:
+#         per_branch = []
+#         total = Decimal("0.00")
+#         for b in branches:
+#             q = cell.get((p.id, b.id), Decimal("0.00"))
+#             if not unit_allows_fraction(p.unit):
+#                 q = q.to_integral_value()
+#             per_branch.append(q)
+#             total += Decimal(str(q))
+#
+#         # تجاهل المنتجات لو كلها صفر والإخفاء مفعّل
+#         if hide_zero and all(q == 0 for q in per_branch):
+#             continue
+#
+#         ws.append([p.name, p.get_unit_display()] + per_branch + [total])
+#
+#     # ⚙️ تنسيق الأعمدة
+#     for col in ws.columns:
+#         max_len = 0
+#         col_letter = col[0].column_letter
+#         for c in col:
+#             c.border = thin_border
+#             c.alignment = align_center
+#             if c.value:
+#                 max_len = max(max_len, len(str(c.value)))
+#         ws.column_dimensions[col_letter].width = max_len + 2
+#
+#     # 📄 إعداد ملف الرد
+#     response = HttpResponse(
+#         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+#     )
+#     filename = f"production_{the_date.isoformat()}.xlsx"
+#     response["Content-Disposition"] = f'attachment; filename="{filename}"'
+#     wb.save(response)
+#     return response
+@login_required
+@role_required(["control", "admin"])
+def export_production_excel(request):
+    # 🧹 تنظيف البيانات القادمة من الرابط
+    date_raw = (request.GET.get("date") or "").strip()
+    branch_filter = (request.GET.get("branch") or "").strip()
+    category_filter = (request.GET.get("category") or "").strip()
+    hide_zero = (request.GET.get("hide_zero") or "1").strip() == "1"
+
+    # 📅 معالجة التاريخ
+    try:
+        the_date = datetime.strptime(date_raw, "%Y-%m-%d").date() if date_raw else localdate()
+    except ValueError:
+        the_date = localdate()
+
+    # 🏬 الفروع (فلترة حسب الاختيار)
+    branches = list(Branch.objects.all().order_by("name"))
+    if branch_filter:
+        branches = [b for b in branches if str(b.id) == branch_filter]
+
+    # 🧩 المنتجات الفعالة من قالب الكنترول (ومفلترة بالقسم إن وُجد)
+    templates = ProductionTemplate.objects.filter(is_active=True).select_related("product", "product__category")
+    if category_filter:
+        templates = templates.filter(product__category_id=category_filter)
+    templates = templates.order_by("product__category__name", "product__name")
+    products = [t.product for t in templates]
+
+    # 🗂️ الطلبات الفعلية حسب التاريخ فقط
+    pr_qs = ProductionRequest.objects.filter(date=the_date).select_related("product", "branch")
+    if branch_filter:
+        pr_qs = pr_qs.filter(branch_id=branch_filter)
+    if category_filter:
+        pr_qs = pr_qs.filter(product__category_id=category_filter)
+
+    # 🧮 خريطة كميات
+    cell = {}
+    for pr in pr_qs:
+        cell[(pr.product_id, pr.branch_id)] = to_decimal_safe(pr.quantity, places=2)
+
+    # 🧾 إنشاء ملف Excel
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = f"Production {the_date.isoformat()}"
+
+    # ✳️ أول صف توثيقي: التاريخ + الفرع + القسم (بدون حالة الأصفار)
+    branch_name = ""
+    if branch_filter:
+        try:
+            branch_name = Branch.objects.get(id=branch_filter).name
+        except Branch.DoesNotExist:
+            branch_name = ""
+    else:
+        branch_name = "كل الفروع"
+
+    category_name = ""
+    if category_filter:
+        try:
+            category_name = Category.objects.get(id=category_filter).name
+        except Category.DoesNotExist:
+            category_name = ""
+    else:
+        category_name = "كل الأقسام"
+
+    # info_text = f"📅 التاريخ: {the_date.isoformat()} | 🏬 {branch_name} | 📂 {category_name}"
+    info_text = f"📅 التاريخ: {the_date.strftime('%Y/%m/%d')} | 🏬 {branch_name} | 📂 {category_name}"
+
+    # 🧩 صف التوثيق
+    ws.append([info_text])
+    total_cols = len(["المنتج", "الوحدة"] + [b.name for b in branches] + ["الإجمالي"])
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=total_cols)
+
+    ws["A1"].font = Font(bold=True, size=12, color="000000")
+    ws["A1"].alignment = Alignment(horizontal="center")
+    ws["A1"].fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")  # لون رمادي فاتح
+
+    # 🧩 صف العناوين
+    headers = ["المنتج", "الوحدة"] + [b.name for b in branches] + ["الإجمالي"]
+    ws.append(headers)
+
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
+    align_center = Alignment(horizontal="center", vertical="center")
+    thin_border = Border(left=Side(style="thin"), right=Side(style="thin"),
+                         top=Side(style="thin"), bottom=Side(style="thin"))
+
+    # 🎨 تهيئة رؤوس الجدول
+    for col_idx, h in enumerate(headers, 1):
+        c = ws.cell(row=2, column=col_idx)
+        c.font = header_font
+        c.fill = header_fill
+        c.alignment = align_center
+        c.border = thin_border
+
+    # 🧩 تعبئة البيانات
+    for p in products:
+        per_branch = []
+        total = Decimal("0.00")
+        for b in branches:
+            q = cell.get((p.id, b.id), Decimal("0.00"))
+            if not unit_allows_fraction(p.unit):
+                q = q.to_integral_value()
+            per_branch.append(q)
+            total += Decimal(str(q))
+
+        if hide_zero and all(q == 0 for q in per_branch):
+            continue
+
+        ws.append([p.name, p.get_unit_display()] + per_branch + [total])
+
+    # ⚙️ تنسيق الأعمدة (تجاوز الصف المدموج الأول)
+    for col_cells in ws.iter_cols(min_row=2):
+        first_cell = col_cells[0]
+        col_letter = first_cell.column_letter
+        max_len = 0
+        for c in col_cells:
+            c.border = thin_border
+            c.alignment = align_center
+            if c.value:
+                max_len = max(max_len, len(str(c.value)))
+        ws.column_dimensions[col_letter].width = max_len + 2
+
+    # 📄 إعداد ملف الرد
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    filename = f"production_{the_date.isoformat()}.xlsx"
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    wb.save(response)
+    return response
+
+#-----------------------------------------------------

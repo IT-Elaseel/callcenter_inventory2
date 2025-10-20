@@ -279,4 +279,41 @@ class StandardRequest(models.Model):
 
     def __str__(self):
         return f"{self.branch.name} - {self.get_stamp_type_display()} - {self.product.name} ({self.default_quantity})"
-#---------------------------------------------------------------------------------------------
+# ===================== Production Requests =====================
+from django.utils.timezone import localdate
+
+class ProductionTemplate(models.Model):
+    """
+    المنتجات التي يحددها الكنترول لتظهر للـفروع يوميًا في نموذج طلب الإنتاج.
+    """
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="production_templates")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("product",)
+
+    def __str__(self):
+        return f"{self.product.name} ({'Active' if self.is_active else 'Inactive'})"
+
+
+class ProductionRequest(models.Model):
+    """
+    الكميات اليومية التي يرسلها كل فرع للإنتاج.
+    فرع × منتج × تاريخ (unique)؛ ويمكن تأكيد اليوم.
+    """
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    date = models.DateField(default=localdate)  # تاريخ الطلب
+    quantity = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'),
+                                   validators=[MinValueValidator(Decimal('0.00'))])
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    confirmed = models.BooleanField(default=False)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ("branch", "product", "date")
+
+    def __str__(self):
+        return f"{self.date} | {self.branch.name} | {self.product.name} = {self.quantity}"

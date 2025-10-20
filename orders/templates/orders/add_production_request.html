@@ -1,0 +1,76 @@
+{% extends "orders/base.html" %}
+{% block title %}طلب إنتاج اليوم{% endblock %}
+{% block content %}
+
+<div class="container mt-4" style="max-width: 900px;">
+  <div class="card shadow border-0">
+    <div class="card-header bg-success text-white text-center">
+      <h4>🏭 طلب إنتاج اليوم — {{branch.name}} — {{today}}</h4>
+    </div>
+
+    <div class="card-body">
+
+      <!-- 🔹 فلتر الأقسام -->
+      <form method="get" class="row g-2 mb-4 justify-content-center">
+        <div class="col-md-8">
+          <select name="category" class="form-select" onchange="this.form.submit()">
+            <option value="">اختر القسم...</option>
+            {% for cat in categories %}
+              <option value="{{cat.id}}" {% if selected_cat == cat.id|stringformat:'s' %}selected{% endif %}>{{cat.name}}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3 d-grid">
+          <button class="btn btn-primary">عرض المنتجات</button>
+        </div>
+      </form>
+
+      {% if selected_cat %}
+        {% if already_confirmed %}
+          <div class="alert alert-success text-center">✅ تم تأكيد هذا القسم. العرض للقراءة فقط.</div>
+        {% endif %}
+
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="category" value="{{selected_cat}}">
+          <table class="table table-striped table-bordered align-middle text-center">
+            <thead class="table-light">
+              <tr><th>#</th><th>المنتج</th><th>الوحدة</th><th style="width:150px;">الكمية</th></tr>
+            </thead>
+            <tbody>
+              {% for it in items %}
+                <tr class="{% if it.is_confirmed %}table-success{% endif %}">
+                  <td>{{forloop.counter}}</td>
+                  <td>{{it.product.name}}</td>
+                  <td>{{it.unit}}</td>
+                  <td>
+                    <input type="number" step="any" min="0"
+                           name="quantities[{{it.product.id}}]"
+                           class="form-control text-center"
+                           value="{{it.quantity}}"
+                           {% if already_confirmed %}readonly{% endif %}>
+                  </td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="4" class="text-muted">لا توجد منتجات في هذا القسم.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+
+          {% if not already_confirmed %}
+            <div class="d-flex justify-content-center gap-2 mt-3">
+              <button class="btn btn-secondary" name="save" value="1">💾 حفظ</button>
+              <button class="btn btn-success" name="confirm" value="1" onclick="return confirm('تأكيد قسم هذا اليوم؟');">✅ تأكيد القسم</button>
+            </div>
+          {% endif %}
+        </form>
+      {% else %}
+        <div class="alert alert-info text-center">
+          👈 اختر قسم لعرض منتجاته وتعبئة الكميات.
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% endblock %}

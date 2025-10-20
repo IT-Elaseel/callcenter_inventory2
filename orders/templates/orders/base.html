@@ -166,7 +166,9 @@
 
             <!-- 👥 العملاء -->
             <a href="/customers/" class="btn btn-sm text-white" style="background:rgba(255,255,255,0.15);">👥 العملاء</a>
-
+            <!-- ✅ إضافات نظام الإنتاج -->
+            <a href="{% url 'set_production_items' %}" class="btn btn-sm text-white" style="background:rgba(255,255,255,0.15);">⚙️ إعداد منتجات الإنتاج</a>
+            <a href="{% url 'production_overview' %}" class="btn btn-sm text-white" style="background:rgba(255,255,255,0.15);">📊 تجميعة الإنتاج</a>
             <!-- 📞 الكول سنتر -->
             <a href="/callcenter/" class="btn btn-sm text-white" style="background:rgba(255,255,255,0.15);">📞 الكول سنتر</a>
 
@@ -202,6 +204,7 @@
             <a href="/customers/" class="btn btn-sm text-white">👥 العملاء</a>
 
           {% elif role == "branch" %}
+            <a href="{% url 'add_production_request' %}" class="btn btn-sm text-white">🏭 طلب إنتاج اليوم</a>
             <a href="/inventory/set-stamp/" class="btn btn-sm text-white">🧾 استامبا تحديث المخزون</a>
             <a href="{% url 'set_standard_request' %}" class="btn btn-sm text-white">⭐استامبا إنشاء طلبيه</a>
             <a href="{% url 'reservations_list' %}" class="btn btn-sm text-white">📑 الحجوزات</a>
