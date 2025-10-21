@@ -1,6 +1,29 @@
 <!DOCTYPE html>
 <html lang="ar">
 <head>
+    <!-- ✅ أيقونة التبويب -->
+    <link rel="icon" type="image/png" href="{% static 'images/favicon.png' %}">
+    <link rel="apple-touch-icon" href="{% static 'images/favicon.png' %}">
+
+    <!-- ✅ معلومات الموقع -->
+    <meta name="title" content="حلواني الأصيل | Sweets Factory">
+    <meta name="description" content="حلواني الأصيل — الذكرى الأصيلة في المذاق الأصيل. اطلب الآن من فروعنا أو عبر موقعنا الإلكتروني.">
+    <meta name="keywords" content="حلواني الأصيل, حلويات, كنافة, بسبوسة, جاتوه, تورتة, حلويات شرقية, حلويات غربية">
+
+    <!-- ✅ Open Graph (واتساب / فيسبوك) -->
+    <meta property="og:title" content="حلواني الأصيل 🍩">
+    <meta property="og:description" content="الطعم الأصيل في كل حلاوة — اطلب الآن من حلواني الأصيل!">
+    <meta property="og:image" content="https://inv.el-aseel.com/static/images/share-preview.jpg">
+    <meta property="og:url" content="https://inv.el-aseel.com/">
+    <meta property="og:type" content="website">
+    <meta property="og:locale" content="ar_AR">
+
+    <!-- ✅ Twitter Card (اختياري) -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="حلواني الأصيل 🍩">
+    <meta name="twitter:description" content="الطعم الأصيل في كل حلاوة — اطلب الآن من حلواني الأصيل!">
+    <meta name="twitter:image" content="https://inv.el-aseel.com/static/images/share-preview.jpg">
+    <!-- end -->
     <meta charset="UTF-8">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
@@ -214,9 +237,18 @@
             <a href="/inventory/update/" class="btn btn-sm text-white">📦 تحديث المخزون</a>
             <a href="{% url 'add_daily_request' %}" class="btn btn-sm text-white">📝 إنشاء طلبية</a>
             <a href="/" class="btn btn-sm text-white">🏠 الرئيسية</a>
-          {% elif role == "admin" or role == "control" %}
+          {% elif role == "control" %}
+            <!-- ✅ إضافات نظام الإنتاج -->
+            <a href="{% url 'set_production_items' %}" class="btn btn-sm text-white" style="background:rgba(255,255,255,0.15);">⚙️ إعداد منتجات الإنتاج</a>
+            <a href="{% url 'production_overview' %}" class="btn btn-sm text-white" style="background:rgba(255,255,255,0.15);">📊 تجميعة الإنتاج</a>
             <!-- 🎛️ كنترول الطلبات -->
             <a href="{% url 'control_requests' %}"class="btn btn-sm text-white"style="background:rgba(255,255,255,0.15);">🎛️الكنترول</a>
+            <!-- ✅الانتاج -->
+            {% elif role == "production" %}
+              <!-- ✅ إضافات نظام الإنتاج -->
+              <a href="{% url 'set_production_items' %}" class="btn btn-sm text-white" style="background:rgba(255,255,255,0.15);">⚙️ إعداد منتجات الإنتاج</a>
+              <a href="{% url 'production_overview' %}" class="btn btn-sm text-white" style="background:rgba(255,255,255,0.15);">📊 تجميعة الإنتاج</a>
+              <a href="{% url 'branch_inventory' %}" class="btn btn-sm text-white" style="background:rgba(255,255,255,0.15);">📦 المخزون</a>
             {% elif role == "hr" %}
             <!-- 🧑‍💼 الموارد البشرية -->
             <div class="d-flex gap-2">

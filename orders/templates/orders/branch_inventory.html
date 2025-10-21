@@ -49,7 +49,7 @@
 
           <div class="col-md-3">
             <label class="form-label">بحث:</label>
-            <input type="text" class="form-control" name="q" value="{{ query|default:'' }}" placeholder="اسم المنتج">
+            <input type="text" class="form-control" name="q" value="{{ query|default:'' }}" placeholder="اسم المنتج" id="searchInput" autofocus>
           </div>
 
           <div class="col-md-3">
@@ -87,7 +87,19 @@
       </table>
     </div>
 </div>
-
+<script>
+  // لما الصفحة تخلص تحميل
+  window.addEventListener('load', function() {
+    const input = document.getElementById('searchInput');
+    if (input) {
+      // لما العنصر ياخد فوكس يحدد النص كله تلقائيًا
+      input.focus();
+      input.select();
+      // كمان لو رجعت فوكس عليه بعدين يحدد النص برضه
+      input.addEventListener('focus', () => input.select());
+    }
+  });
+</script>
 <style>
   html, body {
     height: 100%;

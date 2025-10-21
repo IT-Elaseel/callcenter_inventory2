@@ -71,7 +71,7 @@
                   <td>{{ r.product.name }}</td>
                   <td>{{ r.quantity }}</td>
                   <td>{{ r.product.get_unit_display }}</td>
-                  <td>{{ r.created_at|date:"H:i" }}</td>
+                  <td>{{ r.created_at|date:"H:i:s" }}</td>
                 </tr>
               {% endfor %}
             </tbody>

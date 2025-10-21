@@ -7,70 +7,55 @@
       <h4 class="mb-0">📦 تجميعة طلبات الإنتاج — {{date}}</h4>
     </div>
     <div class="card-body">
-
-      <!-- 🔍 الفلاتر -->
-      <!-- <form method="get" class="row g-2 align-items-center justify-content-center mb-4">
-        <div class="col-md-3">
-          <label class="form-label mb-1">📅 التاريخ:</label>
-          <input type="date" name="date" class="form-control" value="{{date}}">
+      <!-- 🏬 حالة الفروع في صف واحد -->
+  <div class="alert alert-light border mb-4 text-center">
+    <h5 class="fw-bold mb-2">🔍 حالة الفروع:</h5>
+    <div style="display: flex; flex-wrap: nowrap; overflow-x: auto; justify-content: center; gap: 25px;">
+      {% for b in branch_status %}
+        <div style="white-space: nowrap; font-size: 1.1rem;">
+          <strong>{{ b.branch.name }}</strong>
+          {% if b.done %}
+            ✅
+          {% else %}
+            ❌
+          {% endif %}
+          <small class="text-muted">({{ b.confirmed }}/{{ b.total }})</small>
         </div>
-
-        <div class="col-md-4">
-          <label class="form-label mb-1">🏬 الفرع:</label>
-          <select name="branch" class="form-select">
-            <option value="">كل الفروع</option>
-            {% for b in branches %}
-              <option value="{{b.id}}" {% if branch_filter == b.id|stringformat:'s' %}selected{% endif %}>{{b.name}}</option>
-            {% endfor %}
-          </select>
-        </div>
-
-        <div class="col-md-3 d-flex align-items-center justify-content-center">
-          <input type="checkbox" name="hide_zero" value="1" id="hide_zero" {% if hide_zero %}checked{% endif %}>
-          <label for="hide_zero" class="ms-2">إخفاء المنتجات ذات الكمية صفر</label>
-        </div>
-
-        <div class="col-md-2 d-grid">
-          <button class="btn btn-primary">تطبيق</button>
-        </div>
-      </form> -->
-      <form method="get" class="row g-2 align-items-center justify-content-center mb-4">
-  <div class="col-md-3">
-    <label class="form-label mb-1">📅 التاريخ:</label>
-    <input type="date" name="date" class="form-control" value="{{date}}">
-  </div>
-
-  <div class="col-md-3">
-    <label class="form-label mb-1">🏬 الفرع:</label>
-    <select name="branch" class="form-select">
-      <option value="">كل الفروع</option>
-      {% for b in branches %}
-        <option value="{{b.id}}" {% if branch_filter == b.id|stringformat:'s' %}selected{% endif %}>{{b.name}}</option>
       {% endfor %}
-    </select>
+    </div>
   </div>
+    <form method="get" class="row g-2 align-items-center justify-content-center mb-4">
+      <div class="col-md-3">
+        <label class="form-label mb-1">📅 التاريخ:</label>
+        <input type="date" name="date" class="form-control" value="{{date}}">
+      </div>
 
-  <div class="col-md-3">
-    <label class="form-label mb-1">📂 القسم:</label>
-    <select name="category" class="form-select">
-      <option value="">كل الأقسام</option>
-      {% for c in categories %}
-        <option value="{{c.id}}" {% if category_filter == c.id|stringformat:'s' %}selected{% endif %}>{{c.name}}</option>
-      {% endfor %}
-    </select>
-  </div>
+      <div class="col-md-3">
+        <label class="form-label mb-1">🏬 الفرع:</label>
+        <select name="branch" class="form-select">
+          <option value="">كل الفروع</option>
+          {% for b in branches %}
+            <option value="{{b.id}}" {% if branch_filter == b.id|stringformat:'s' %}selected{% endif %}>{{b.name}}</option>
+          {% endfor %}
+        </select>
+      </div>
 
-  <div class="col-md-3 d-flex align-items-center justify-content-center">
-    <input type="checkbox" name="hide_zero" value="1" id="hide_zero" {% if hide_zero %}checked{% endif %}>
-    <label for="hide_zero" class="ms-2">إخفاء المنتجات ذات الكمية صفر</label>
-  </div>
+      <div class="col-md-3">
+        <label class="form-label mb-1">📂 القسم:</label>
+        <select name="category" class="form-select">
+          <option value="">كل الأقسام</option>
+          {% for c in categories %}
+            <option value="{{c.id}}" {% if category_filter == c.id|stringformat:'s' %}selected{% endif %}>{{c.name}}</option>
+          {% endfor %}
+        </select>
+      </div>
 
-  <div class="col-md-2 d-grid">
-    <button class="btn btn-primary">تطبيق</button>
-  </div>
-</form>
-
-
+      <div class="col-md-3 d-flex align-items-center justify-content-center">
+        <input type="hidden" name="hide_zero" value="0">
+        <input type="checkbox" name="hide_zero" value="1" id="hide_zero" {% if hide_zero %}checked{% endif %}>
+        <label for="hide_zero" class="ms-2">إخفاء المنتجات ذات الكمية صفر</label>
+      </div>
+    </form>
       <div class="text-end mb-2">
         <a class="btn btn-success btn-sm"
            href="{% url 'export_production_excel' %}?date={{date}}{% if branch_filter %}&branch={{branch_filter}}{% endif %}{% if category_filter %}&category={{category_filter}}{% endif %}{% if hide_zero %}&hide_zero=1{% endif %}">
@@ -112,4 +97,16 @@
     </div>
   </div>
 </div>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const form = document.querySelector("form");
+
+  // أي تغيير في select أو checkbox أو input date → يعمل submit تلقائي
+  form.querySelectorAll("select, input[type='date'], input[type='checkbox']").forEach(el => {
+    el.addEventListener("change", () => {
+      form.submit();
+    });
+  });
+});
+</script>
 {% endblock %}

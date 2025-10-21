@@ -2475,10 +2475,7 @@ def production_overview(request):
     date_raw = request.GET.get("date")
     branch_filter = request.GET.get("branch", "").strip()
     category_filter = request.GET.get("category", "").strip()  # ✅ جديد
-    if "hide_zero" in request.GET:
-        hide_zero = request.GET.get("hide_zero") == "1"
-    else:
-        hide_zero = True
+    hide_zero = request.GET.get("hide_zero", "1") == "1"
 
     try:
         the_date = datetime.strptime(date_raw, "%Y-%m-%d").date() if date_raw else localdate()
@@ -2544,25 +2541,6 @@ def production_overview(request):
             branch_name = Branch.objects.get(id=branch_filter).name
         except Branch.DoesNotExist:
             branch_name = None
-    # 🔍 فحص حالة كل فرع (هل أكّد كل الأقسام المطلوبة؟)
-    branch_status = []
-    templates_all = ProductionTemplate.objects.filter(is_active=True).values_list("product_id", flat=True)
-
-    for b in Branch.objects.all().order_by("name"):
-        total_required = templates_all.count()
-        confirmed_count = ProductionRequest.objects.filter(
-            branch=b, date=the_date, confirmed=True, product_id__in=templates_all
-        ).count()
-
-        # ✅ لو عدد المنتجات المؤكدة = كل المنتجات المطلوبة
-        is_done = (confirmed_count == total_required and total_required > 0)
-
-        branch_status.append({
-            "branch": b,
-            "done": is_done,
-            "confirmed": confirmed_count,
-            "total": total_required
-        })
 
     return render(request, "orders/production_overview.html", {
         "date": the_date.isoformat(),
@@ -2573,7 +2551,6 @@ def production_overview(request):
         "branch_filter": branch_filter,
         "branch_name": branch_name,
         "category_filter": category_filter,  # ✅ جديد
-        "branch_status": branch_status,
         "hide_zero": hide_zero
     })
 #-----------------------------------------------------
