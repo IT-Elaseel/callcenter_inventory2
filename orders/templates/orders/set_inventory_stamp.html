@@ -70,9 +70,9 @@
         {% csrf_token %}
         <input type="hidden" name="product" id="productInput">
         <input type="number" name="quantity" id="quantityInput"
-               class="form-control text-center fw-bold"
-               style="max-width:150px; font-size:1.2rem;" min="0.01" step="0.01"
-               required placeholder="الكمية" autofocus>
+           class="form-control text-center fw-bold"
+           style="max-width:150px; font-size:1.2rem;" min="0" step="0.01"
+           required placeholder="الكمية" autofocus>
         <span id="unitLabel" class="fw-bold text-primary" style="font-size:1.1rem;"></span>
         <button type="submit" name="add_item" class="btn btn-success btn-lg px-4">
           ➕ إضافة
@@ -113,9 +113,9 @@
                          name="quantities[{{ r.id }}]"
                          value="{{ r.default_quantity|stringformat:'.2f' }}"
                          {% if r.product.unit == 'kg' %}
-                           min="0.01" step="0.01"
+                           min="0.00" step="0.01"
                          {% else %}
-                           min="1" step="1"
+                           min="0" step="1"
                          {% endif %}
                          class="form-control form-control-sm text-center fw-bold"
                          style="width: 80px; height: 32px;">
@@ -181,6 +181,7 @@ function selectProduct(btn) {
   document.getElementById("unitLabel").textContent = unit;
 
   document.getElementById("quantitySection").classList.remove("d-none");
+  document.getElementById("quantityInput").value = 0;
   document.getElementById("quantityInput").focus();
 }
 

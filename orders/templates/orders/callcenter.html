@@ -9,7 +9,7 @@
         <!-- ✅ الفلاتر -->
         <form method="get" class="cc-filters">
             <div class="input-wrapper">
-                <input type="text" name="q" placeholder="ابحث عن منتج..." value="{{ query|default:'' }}" autofocus>
+                <input type="text" name="q" placeholder="ابحث عن منتج..." value="{{ query|default:'' }}" id="searchInput" autofocus>
             </div>
             <div class="select-wrapper">
                 <select name="category" onchange="this.form.submit()">
@@ -375,5 +375,16 @@ function showToast(message, type) {
   document.body.appendChild(toast);
   setTimeout(() => toast.remove(), 3000);
 }
+  // لما الصفحة تخلص تحميل
+window.addEventListener('load', function() {
+  const input = document.getElementById('searchInput');
+  if (input) {
+    // لما العنصر ياخد فوكس يحدد النص كله تلقائيًا
+    input.focus();
+    input.select();
+    // كمان لو رجعت فوكس عليه بعدين يحدد النص برضه
+    input.addEventListener('focus', () => input.select());
+  }
+});
 </script>
 {% endblock %}

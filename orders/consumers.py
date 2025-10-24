@@ -103,6 +103,35 @@ class BranchConsumer(AsyncWebsocketConsumer):
 #             "decision_at": event.get("decision_at"),
 #             "reserved_by": event.get("reserved_by"),
 #         }))
+# class ReservationsConsumer(AsyncWebsocketConsumer):
+#     async def connect(self):
+#         await self.channel_layer.group_add("reservations_updates", self.channel_name)
+#         await self.accept()
+#         print("📋 Reservations WebSocket connected")
+#
+#     async def disconnect(self, close_code):
+#         await self.channel_layer.group_discard("reservations_updates", self.channel_name)
+#         print("⚠️ Reservations WebSocket disconnected")
+#
+#     # 👇 لازم يكون نفس الاسم الموجود في type بالـ group_send
+#     async def reservations_update(self, event):
+#         print("📢 reservations_update event received:", event)
+#         await self.send(text_data=json.dumps({
+#             "action": event.get("action", ""),
+#             "message": event.get("message", ""),
+#             "reservation_id": event.get("reservation_id"),
+#             "customer_name": event.get("customer_name"),
+#             "customer_phone": event.get("customer_phone"),
+#             "product_name": event.get("product_name"),
+#             "quantity": event.get("quantity"),
+#             "branch_name": event.get("branch_name"),
+#             "delivery_type": event.get("delivery_type"),
+#             "status": event.get("status"),
+#             "created_at": event.get("created_at"),
+#             "decision_at": event.get("decision_at"),
+#             "branch_last_modified_at": event.get("branch_last_modified_at"),
+#             "reserved_by": event.get("reserved_by"),
+#         }))
 class ReservationsConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         await self.channel_layer.group_add("reservations_updates", self.channel_name)
@@ -113,22 +142,30 @@ class ReservationsConsumer(AsyncWebsocketConsumer):
         await self.channel_layer.group_discard("reservations_updates", self.channel_name)
         print("⚠️ Reservations WebSocket disconnected")
 
-    # 👇 لازم يكون نفس الاسم الموجود في type بالـ group_send
     async def reservations_update(self, event):
         print("📢 reservations_update event received:", event)
+
+        # 🧩 تأمين القيم قبل تحويلها إلى JSON
+        safe_event = {}
+        for k, v in event.items():
+            if isinstance(v, Decimal):
+                safe_event[k] = float(v)  # ✅ نحول Decimal إلى float
+            else:
+                safe_event[k] = v
+
         await self.send(text_data=json.dumps({
-            "action": event.get("action", ""),
-            "message": event.get("message", ""),
-            "reservation_id": event.get("reservation_id"),
-            "customer_name": event.get("customer_name"),
-            "customer_phone": event.get("customer_phone"),
-            "product_name": event.get("product_name"),
-            "quantity": event.get("quantity"),
-            "branch_name": event.get("branch_name"),
-            "delivery_type": event.get("delivery_type"),
-            "status": event.get("status"),
-            "created_at": event.get("created_at"),
-            "decision_at": event.get("decision_at"),
-            "branch_last_modified_at": event.get("branch_last_modified_at"),
-            "reserved_by": event.get("reserved_by"),
+            "action": safe_event.get("action", ""),
+            "message": safe_event.get("message", ""),
+            "reservation_id": safe_event.get("reservation_id"),
+            "customer_name": safe_event.get("customer_name"),
+            "customer_phone": safe_event.get("customer_phone"),
+            "product_name": safe_event.get("product_name"),
+            "quantity": safe_event.get("quantity"),  # دلوقتي بقت float
+            "branch_name": safe_event.get("branch_name"),
+            "delivery_type": safe_event.get("delivery_type"),
+            "status": safe_event.get("status"),
+            "created_at": safe_event.get("created_at"),
+            "decision_at": safe_event.get("decision_at"),
+            "branch_last_modified_at": safe_event.get("branch_last_modified_at"),
+            "reserved_by": safe_event.get("reserved_by"),
         }))

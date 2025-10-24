@@ -267,18 +267,25 @@ class StandardRequest(models.Model):
     branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name="standard_requests")
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     default_quantity = models.DecimalField(
-        max_digits=12, decimal_places=2, default=Decimal('1.00'),
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('1.00'),
         validators=[MinValueValidator(Decimal('0.00'))]
     )
     stamp_type = models.CharField(max_length=20, choices=STAMP_TYPES, default="order")
+
+    # 🆕 الحقل الجديد لتسمية كل استمبا
+    stamp_name = models.CharField(max_length=100, default="الاستمبا الأساسية", verbose_name="اسم الاستمبا")
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ("branch", "product", "stamp_type")
+        # كل استمبا تميزها branch + product + نوع الاستمبا + اسمها
+        unique_together = ("branch", "product", "stamp_type", "stamp_name")
 
     def __str__(self):
-        return f"{self.branch.name} - {self.get_stamp_type_display()} - {self.product.name} ({self.default_quantity})"
+        return f"{self.branch.name} - {self.stamp_name} - {self.product.name} ({self.default_quantity})"
 # ===================== Production Requests =====================
 from django.utils.timezone import localdate
 
