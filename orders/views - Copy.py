@@ -329,55 +329,185 @@ def reservations_list(request):
         },
     )
 #-------------------------------------------------------------
+# def update_reservation_status(request, res_id, status):
+#     reservation = get_object_or_404(Reservation, id=res_id)
+#     profile = getattr(request.user, "userprofile", None)
+#     is_admin = profile and profile.role == "admin"
+#
+#     # ✅ تحديث الحالة في قاعدة البيانات
+#     if status == "confirmed":
+#         reservation.confirm(user=request.user, is_admin=is_admin)
+#         msg = f"✅ تم تأكيد الحجز للعميل {reservation.customer}"
+#         messages.success(request, msg)
+#     elif status == "cancelled":
+#         reservation.cancel(user=request.user, is_admin=is_admin)
+#         msg = f"❌ تم إلغاء الحجز للعميل {reservation.customer}"
+#         messages.warning(request, msg)
+#     else:
+#         messages.error(request, "⚠️ حالة غير معروفة")
+#         return redirect(request.META.get("HTTP_REFERER", "branch_dashboard"))
+#     # 🕒 حدث توقيت آخر إجراء للفرع
+#     reservation.branch_last_modified_at = timezone.now()
+#     reservation.save(update_fields=["branch_last_modified_at"])
+#
+#     # 🔁 مهم جدًا: نرجّع نحمل نسخة حديثة من قاعدة البيانات
+#     reservation.refresh_from_db()
+#     # ============================================================
+#     # 🔄 إرسال إشعار لتحديث صفحة الحجوزات عبر WebSocket
+#     # ============================================================
+#     channel_layer = get_channel_layer()
+#     async_to_sync(channel_layer.group_send)(
+#         "reservations_updates",
+#         {
+#             "type": "reservations_update",      # ← لازم يطابق اسم الدالة في consumer
+#             "action": "status_change",          # نميّز نوع التحديث
+#             "message": msg,
+#             "reservation_id": reservation.id,
+#             "customer_name": reservation.customer.name if reservation.customer else "-",
+#             "customer_phone": reservation.customer.phone if reservation.customer else "-",
+#             "product_name": reservation.product.name,
+#             "quantity": reservation.quantity,
+#             "branch_name": reservation.branch.name,
+#             "delivery_type": reservation.get_delivery_type_display(),
+#             "status": reservation.get_status_display(),
+#             "created_at": timezone.localtime(reservation.created_at).strftime('%Y-%m-%d %H:%M:%S'),
+#             "decision_at": timezone.localtime(reservation.decision_at).strftime('%Y-%m-%d %H:%M:%S') if reservation.decision_at else "",
+#             "branch_last_modified_at": timezone.localtime(reservation.branch_last_modified_at).strftime('%Y-%m-%d %H:%M:%S') if reservation.branch_last_modified_at else "-",
+#             "reserved_by": reservation.reserved_by.username if reservation.reserved_by else "-",
+#         },
+#     )
+#
+#     return redirect(request.META.get("HTTP_REFERER", "branch_dashboard"))
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+from django.utils import timezone
+from django.shortcuts import get_object_or_404, redirect
+from django.contrib import messages
+from .models import Reservation, Inventory
+
+
 def update_reservation_status(request, res_id, status):
+    # 🟢 نحضر بيانات الحجز المطلوبة
     reservation = get_object_or_404(Reservation, id=res_id)
     profile = getattr(request.user, "userprofile", None)
     is_admin = profile and profile.role == "admin"
 
-    # ✅ تحديث الحالة في قاعدة البيانات
+    # 🧩 جروب السوكيت اللى هنبعتله التحديث
+    channel_layer = get_channel_layer()
+
+    # -------------------------------------------------------------
+    # 🟢 الحالة 1: تأكيد أو إعادة تأكيد الحجز
+    # -------------------------------------------------------------
     if status == "confirmed":
+        old_status = reservation.status  # نحتفظ بالحالة القديمة قبل التغيير
+
+        # ✅ استدعاء دالة التأكيد في الموديل (بتغير الحالة وتسجل الوقت والمستخدم)
         reservation.confirm(user=request.user, is_admin=is_admin)
+
         msg = f"✅ تم تأكيد الحجز للعميل {reservation.customer}"
         messages.success(request, msg)
+
+        # 🟢 لو الحالة القديمة كانت 'cancelled' → يبقى دي إعادة تأكيد → نخصم الكمية تاني
+        if old_status == "cancelled":
+            try:
+                inv = Inventory.objects.get(product=reservation.product, branch=reservation.branch)
+                inv.quantity -= reservation.quantity
+                if inv.quantity < 0:
+                    inv.quantity = 0
+                inv.save(update_fields=["quantity"])
+
+                # 🔄 تحديث لحظي للكول سنتر عبر WebSocket
+                async_to_sync(channel_layer.group_send)(
+                    "callcenter_updates",
+                    {
+                        "type": "callcenter_update",
+                        "action": "inventory_update",
+                        # "message": f"📦 تم خصم {reservation.quantity} من {reservation.product.name} في {reservation.branch.name} بعد إعادة التأكيد.",
+                        "product_id": reservation.product.id,
+                        "product_name": reservation.product.name,
+                        "category_name": getattr(reservation.product.category, 'name', ''),
+                        "branch_id": reservation.branch.id,
+                        "branch_name": reservation.branch.name,
+                        "new_qty": float(inv.quantity),
+                        "unit": reservation.product.get_unit_display(),
+                    },
+                )
+            except Inventory.DoesNotExist:
+                print("⚠️ لا يوجد سجل مخزون لهذا المنتج في هذا الفرع")
+
+    # -------------------------------------------------------------
+    # 🟠 الحالة 2: إلغاء الحجز
+    # -------------------------------------------------------------
     elif status == "cancelled":
         reservation.cancel(user=request.user, is_admin=is_admin)
         msg = f"❌ تم إلغاء الحجز للعميل {reservation.customer}"
         messages.warning(request, msg)
+
+        # 🔁 استرجاع الكمية للمخزون
+        try:
+            inv = Inventory.objects.get(product=reservation.product, branch=reservation.branch)
+            inv.quantity += reservation.quantity
+            inv.save(update_fields=["quantity"])
+
+            # 🔄 إشعار WebSocket للكول سنتر
+            async_to_sync(channel_layer.group_send)(
+                "callcenter_updates",
+                {
+                    "type": "callcenter_update",
+                    "action": "inventory_update",
+                    # "message": f"🔄 تم إرجاع {reservation.quantity} من {reservation.product.name} إلى {reservation.branch.name} بعد الإلغاء.",
+                    "product_id": reservation.product.id,
+                    "product_name": reservation.product.name,
+                    "category_name": getattr(reservation.product.category, 'name', ''),
+                    "branch_id": reservation.branch.id,
+                    "branch_name": reservation.branch.name,
+                    "new_qty": float(inv.quantity),
+                    "unit": reservation.product.get_unit_display(),
+                },
+            )
+        except Inventory.DoesNotExist:
+            print("⚠️ لا يوجد سجل مخزون مطابق لهذا الحجز")
+
+    # -------------------------------------------------------------
+    # 🔴 الحالة 3: حالة غير معروفة
+    # -------------------------------------------------------------
     else:
         messages.error(request, "⚠️ حالة غير معروفة")
-        return redirect(request.META.get("HTTP_REFERER", "branch_dashboard"))
-    # 🕒 حدث توقيت آخر إجراء للفرع
+        return redirect(request.META.get("HTTP_REFERER", "reservations_list"))
+
+    # -------------------------------------------------------------
+    # 🕒 تحديث توقيت آخر تعديل للفرع
+    # -------------------------------------------------------------
     reservation.branch_last_modified_at = timezone.now()
     reservation.save(update_fields=["branch_last_modified_at"])
-
-    # 🔁 مهم جدًا: نرجّع نحمل نسخة حديثة من قاعدة البيانات
     reservation.refresh_from_db()
-    # ============================================================
-    # 🔄 إرسال إشعار لتحديث صفحة الحجوزات عبر WebSocket
-    # ============================================================
-    channel_layer = get_channel_layer()
+
+    # -------------------------------------------------------------
+    # 📢 إشعار لحظي إلى صفحة الحجوزات (Reservations Dashboard)
+    # -------------------------------------------------------------
     async_to_sync(channel_layer.group_send)(
         "reservations_updates",
         {
-            "type": "reservations_update",      # ← لازم يطابق اسم الدالة في consumer
-            "action": "status_change",          # نميّز نوع التحديث
+            "type": "reservations_update",
+            "action": "status_change",
             "message": msg,
             "reservation_id": reservation.id,
             "customer_name": reservation.customer.name if reservation.customer else "-",
             "customer_phone": reservation.customer.phone if reservation.customer else "-",
             "product_name": reservation.product.name,
-            "quantity": reservation.quantity,
+            "quantity": float(reservation.quantity),
             "branch_name": reservation.branch.name,
             "delivery_type": reservation.get_delivery_type_display(),
             "status": reservation.get_status_display(),
             "created_at": timezone.localtime(reservation.created_at).strftime('%Y-%m-%d %H:%M:%S'),
             "decision_at": timezone.localtime(reservation.decision_at).strftime('%Y-%m-%d %H:%M:%S') if reservation.decision_at else "",
-            "branch_last_modified_at": timezone.localtime(reservation.branch_last_modified_at).strftime('%Y-%m-%d %H:%M:%S') if reservation.branch_last_modified_at else "-",
+            "branch_last_modified_at": timezone.localtime(reservation.branch_last_modified_at).strftime('%Y-%m-%d %H:%M:%S'),
             "reserved_by": reservation.reserved_by.username if reservation.reserved_by else "-",
         },
     )
 
-    return redirect(request.META.get("HTTP_REFERER", "branch_dashboard"))
+    # ✅ رجوع لنفس الصفحة بعد الإجراء
+    return redirect(request.META.get("HTTP_REFERER", "reservations_list"))
 #-------------------------------------------------------------
 @login_required
 @role_required(["admin"])
@@ -1066,9 +1196,10 @@ def set_inventory_stamp(request):
         if "add_item" in request.POST:
             product_id = request.POST.get("product")
             # تحويل آمن للقيمة (يدعم كسور)
-            qty = to_decimal_safe(request.POST.get("quantity", 1), places=2)
+            qty = to_decimal_safe(request.POST.get("quantity") or 0, places=2)
 
-            if product_id and qty > Decimal('0.00'):
+            # if product_id and qty > Decimal('0.00'):
+            if product_id:
                 product = Product.objects.get(id=product_id)
                 # لاحظ أننا نحفظ default_quantity كـ Decimal لذا الموديل لازم يكون DecimalField
                 StandardRequest.objects.update_or_create(
@@ -1084,17 +1215,45 @@ def set_inventory_stamp(request):
             return redirect("set_inventory_stamp")
 
         # ✏️ تعديل كمية منتج
+        # elif "update_item" in request.POST:
+        #     std_id = request.POST.get("update_item")
+        #     new_qty = request.POST.get(f"quantities[{std_id}]")
+        #     if std_id and new_qty is not None:
+        #         try:
+        #             sr = StandardRequest.objects.get(id=std_id, branch=branch, stamp_type="inventory")
+        #             sr.default_quantity = to_decimal_safe(new_qty, places=2)
+        #             sr.save()
+        #             messages.success(request, f"✏️ تم تحديث {sr.product.name} إلى {sr.default_quantity}.")
+        #         except StandardRequest.DoesNotExist:
+        #             pass
+        #     return redirect("set_inventory_stamp")
+        # ✏️ تعديل كمية منتج
         elif "update_item" in request.POST:
             std_id = request.POST.get("update_item")
             new_qty = request.POST.get(f"quantities[{std_id}]")
-            if std_id and new_qty is not None:
+
+            if std_id:
                 try:
                     sr = StandardRequest.objects.get(id=std_id, branch=branch, stamp_type="inventory")
-                    sr.default_quantity = to_decimal_safe(new_qty, places=2)
-                    sr.save()
-                    messages.success(request, f"✏️ تم تحديث {sr.product.name} إلى {sr.default_quantity}.")
+
+                    # ✅ تحويل الكمية بأمان (حتى لو كانت صفر أو فاضية)
+                    from decimal import Decimal, InvalidOperation
+                    try:
+                        qty_decimal = Decimal(str(new_qty).strip())
+                    except (InvalidOperation, TypeError, ValueError):
+                        qty_decimal = Decimal('0.00')
+
+                    # ✅ تأكد أنها مش سالبة (اختياري)
+                    if qty_decimal < Decimal('0.00'):
+                        messages.error(request, "🚫 الكمية لا يمكن أن تكون سالبة.")
+                    else:
+                        sr.default_quantity = qty_decimal
+                        sr.save()
+                        messages.success(request, f"✏️ تم تحديث {sr.product.name} إلى {sr.default_quantity}.")
+
                 except StandardRequest.DoesNotExist:
-                    pass
+                    messages.error(request, "⚠️ لم يتم العثور على هذا المنتج.")
+
             return redirect("set_inventory_stamp")
 
         # 🗑️ حذف منتج واحد
@@ -1692,8 +1851,30 @@ def add_daily_request(request):
     # 🟢 POST actions
     if request.method == "POST":
         # 🔹 تحميل الطلبية القياسية
+        # if "load_standard" in request.POST:
+        #     standard_items = StandardRequest.objects.filter(branch=branch, stamp_type="order").select_related("product", "product__category")
+        #     added = 0
+        #     for item in standard_items:
+        #         _, created = DailyRequest.objects.get_or_create(
+        #             branch=branch,
+        #             product=item.product,
+        #             category=item.product.category,
+        #             order_number=order_number,
+        #             is_confirmed=False,
+        #             defaults={
+        #                 "quantity": item.default_quantity,
+        #                 "created_by": request.user,
+        #             }
+        #         )
+        #         if created:
+        #             added += 1
+        #     messages.success(request, f"✅ تم تحميل الطلبية القياسية لهذا الفرع (أُضيف {added}).")
+        #     return redirect("add_daily_request")
+        # 🔹 تحميل الطلبية القياسية
         if "load_standard" in request.POST:
-            standard_items = StandardRequest.objects.filter(branch=branch, stamp_type="order").select_related("product", "product__category")
+            selected_stamp = request.POST.get("stamp_name") or "الاستمبا الأساسية"
+            standard_items = StandardRequest.objects.filter(branch=branch, stamp_type="order", stamp_name=selected_stamp).select_related("product", "product__category")
+
             added = 0
             for item in standard_items:
                 _, created = DailyRequest.objects.get_or_create(
@@ -1709,7 +1890,7 @@ def add_daily_request(request):
                 )
                 if created:
                     added += 1
-            messages.success(request, f"✅ تم تحميل الطلبية القياسية لهذا الفرع (أُضيف {added}).")
+            messages.success(request, f"✅ تم تحميل {selected_stamp} ({added} منتج).")
             return redirect("add_daily_request")
 
         # ➕ إضافة منتج
@@ -1850,6 +2031,10 @@ def add_daily_request(request):
     requests_today = DailyRequest.objects.filter(
         order_number=order_number, branch=branch, is_confirmed=False
     ).select_related("product__category").order_by("product__category__name", "product__name")
+    # 🧩 كل أسماء الاستمبات المتاحة للفرع
+    all_stamps = StandardRequest.objects.filter(
+        branch=branch, stamp_type="order"
+    ).values_list("stamp_name", flat=True).distinct()
 
     return render(request, "orders/add_daily_request.html", {
         "products": products,
@@ -1858,8 +2043,225 @@ def add_daily_request(request):
         "requests_today": requests_today,
         "order_number": order_number,
         "selected_category": selected_category,
+        "all_stamps": all_stamps,  # 🆕 هنا
+
     })
 #------------------------------------------------------
+# @login_required
+# @role_required(["branch"])
+# def set_standard_request(request):
+#     profile = getattr(request.user, "userprofile", None)
+#     branch = profile.branch if profile else None
+#
+#     if not branch:
+#         return render(
+#             request,
+#             "orders/no_permission.html",
+#             {"error_message": "🚫 لا يوجد فرع مربوط بحسابك."},
+#             status=403
+#         )
+#
+#     selected_category = request.session.get("selected_category")
+#
+#     if request.method == "POST":
+#         # ➕ إضافة منتج جديد
+#         if "add_item" in request.POST:
+#             product_id = request.POST.get("product")
+#             qty_raw = request.POST.get("quantity", "1")
+#
+#             try:
+#                 qty = Decimal(str(qty_raw)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+#             except Exception:
+#                 qty = Decimal('1.00')
+#
+#             if product_id and qty > 0:
+#                 product = Product.objects.get(id=product_id)
+#                 StandardRequest.objects.update_or_create(
+#                     branch=branch,
+#                     product=product,
+#                     stamp_type="order",
+#                     defaults={
+#                         "default_quantity": qty,
+#                         "updated_at": timezone.now()
+#                     }
+#                 )
+#                 messages.success(request, f"✅ تمت إضافة {product.name} بكمية {qty} {product.get_unit_display()} للطلبية القياسية.")
+#             return redirect("set_standard_request")
+#
+#         # ✏️ تحديث كمية منتج واحد
+#         elif "update_item" in request.POST:
+#             std_id = request.POST.get("request_id") or request.POST.get("update_item")
+#             new_qty_raw = request.POST.get(f"new_quantity_{std_id}") or request.POST.get("new_quantity")
+#
+#             try:
+#                 new_qty = Decimal(str(new_qty_raw)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+#             except Exception:
+#                 new_qty = Decimal('1.00')
+#
+#             if std_id and new_qty > 0:
+#                 try:
+#                     sr = StandardRequest.objects.get(id=std_id, branch=branch, stamp_type="order")
+#                     sr.default_quantity = new_qty
+#                     sr.save()
+#                     messages.success(request, f"✏️ تم تعديل {sr.product.name} إلى {new_qty} {sr.product.get_unit_display()}.")
+#                 except StandardRequest.DoesNotExist:
+#                     messages.error(request, "❌ لم يتم العثور على العنصر المطلوب.")
+#             return redirect("set_standard_request")
+#
+#         # 🗑️ حذف منتج واحد
+#         elif "delete_item" in request.POST:
+#             std_id = request.POST.get("request_id")
+#             if std_id:
+#                 StandardRequest.objects.filter(id=std_id, branch=branch, stamp_type="order").delete()
+#                 messages.success(request, "🗑️ تم حذف المنتج بنجاح.")
+#             return redirect("set_standard_request")
+#
+#         # 🗑️ حذف المحدد
+#         elif "delete_selected" in request.POST:
+#             selected_ids = request.POST.getlist("selected_items")
+#             if selected_ids:
+#                 StandardRequest.objects.filter(id__in=selected_ids, branch=branch, stamp_type="order").delete()
+#                 messages.success(request, "🗑️ تم حذف العناصر المحددة بنجاح.")
+#             else:
+#                 messages.warning(request, "⚠️ لم يتم تحديد أي عنصر.")
+#             return redirect("set_standard_request")
+#
+#         # ❌ حذف الكل
+#         elif "delete_all" in request.POST:
+#             StandardRequest.objects.filter(branch=branch, stamp_type="order").delete()
+#             messages.success(request, "❌ تم حذف جميع العناصر من الطلبية القياسية.")
+#             return redirect("set_standard_request")
+#
+#     # 🧩 البيانات
+#     products = Product.objects.filter(is_available=True)
+#     categories = Category.objects.all()
+#     second_categories = SecondCategory.objects.all()
+#     standard_items = StandardRequest.objects.filter(
+#         branch=branch, stamp_type="order"
+#     ).select_related("product__category").order_by("product__category__name", "product__name")
+#
+#     # 🔹 ضبط عرض القيم بدقة
+#     for item in standard_items:
+#         if item.product.unit == "kg":
+#             item.display_quantity = item.default_quantity.quantize(Decimal('0.01'))
+#         else:
+#             item.display_quantity = int(item.default_quantity)
+#
+#     return render(request, "orders/set_standard_request.html", {
+#         "products": products,
+#         "categories": categories,
+#         "second_categories": second_categories,
+#         "requests_today": standard_items,
+#         "selected_category": selected_category,
+#         "page_title": "الطلبية القياسية"
+#     })
+
+
+# @login_required
+# @role_required(["branch"])
+# def set_standard_request(request):
+#     profile = getattr(request.user, "userprofile", None)
+#     branch = profile.branch if profile else None
+#
+#     if not branch:
+#         return render(request, "orders/no_permission.html", {
+#             "error_message": "🚫 لا يوجد فرع مربوط بحسابك."
+#         }, status=403)
+#
+#     selected_category = request.session.get("selected_category")
+#
+#     # 🔹 اسم الاستمبا الحالية (من الـ session أو القيمة الافتراضية)
+#     current_stamp = request.session.get("current_stamp_name", "الاستمبا الأساسية")
+#
+#     # لو تم اختيار استمبا جديدة من القائمة
+#     if request.method == "POST" and "select_stamp" in request.POST:
+#         current_stamp = request.POST.get("stamp_name") or "الاستمبا الأساسية"
+#         request.session["current_stamp_name"] = current_stamp
+#         messages.info(request, f"🔹 تم اختيار الاستمبا: {current_stamp}")
+#         return redirect("set_standard_request")
+#
+#     if request.method == "POST":
+#         # ➕ إضافة منتج جديد
+#         if "add_item" in request.POST:
+#             product_id = request.POST.get("product")
+#             qty_raw = request.POST.get("quantity", "1")
+#
+#             try:
+#                 qty = Decimal(str(qty_raw)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+#             except Exception:
+#                 qty = Decimal('1.00')
+#
+#             if product_id and qty > 0:
+#                 product = Product.objects.get(id=product_id)
+#                 StandardRequest.objects.update_or_create(
+#                     branch=branch,
+#                     product=product,
+#                     stamp_type="order",
+#                     stamp_name=current_stamp,  # 🆕 الاستمبا الحالية
+#                     defaults={
+#                         "default_quantity": qty,
+#                         "updated_at": timezone.now()
+#                     }
+#                 )
+#                 messages.success(request, f"✅ تمت إضافة {product.name} بكمية {qty} {product.get_unit_display()} إلى {current_stamp}.")
+#             return redirect("set_standard_request")
+#
+#         # ✏️ تحديث كمية منتج
+#         elif "update_item" in request.POST:
+#             std_id = request.POST.get("request_id") or request.POST.get("update_item")
+#             new_qty_raw = request.POST.get(f"new_quantity_{std_id}") or request.POST.get("new_quantity")
+#
+#             try:
+#                 new_qty = Decimal(str(new_qty_raw)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+#             except Exception:
+#                 new_qty = Decimal('1.00')
+#
+#             if std_id and new_qty > 0:
+#                 try:
+#                     sr = StandardRequest.objects.get(id=std_id, branch=branch, stamp_type="order", stamp_name=current_stamp)
+#                     sr.default_quantity = new_qty
+#                     sr.save()
+#                     messages.success(request, f"✏️ تم تعديل {sr.product.name} إلى {new_qty} {sr.product.get_unit_display()}.")
+#                 except StandardRequest.DoesNotExist:
+#                     messages.error(request, "❌ لم يتم العثور على العنصر.")
+#             return redirect("set_standard_request")
+#
+#         # 🗑️ حذف محدد
+#         elif "delete_selected" in request.POST:
+#             selected_ids = request.POST.getlist("selected_items")
+#             if selected_ids:
+#                 StandardRequest.objects.filter(id__in=selected_ids, branch=branch, stamp_type="order", stamp_name=current_stamp).delete()
+#                 messages.success(request, "🗑️ تم حذف العناصر المحددة.")
+#             return redirect("set_standard_request")
+#
+#         # ❌ حذف الكل
+#         elif "delete_all" in request.POST:
+#             StandardRequest.objects.filter(branch=branch, stamp_type="order", stamp_name=current_stamp).delete()
+#             messages.success(request, f"🗑️ تم حذف كل عناصر {current_stamp}.")
+#             return redirect("set_standard_request")
+#
+#     # 🧩 البيانات
+#     products = Product.objects.filter(is_available=True)
+#     categories = Category.objects.all()
+#     second_categories = SecondCategory.objects.all()
+#     standard_items = StandardRequest.objects.filter(
+#         branch=branch, stamp_type="order", stamp_name=current_stamp
+#     ).select_related("product__category").order_by("product__category__name", "product__name")
+#
+#     # قائمة كل الاستمبات الموجودة للفرع
+#     all_stamps = StandardRequest.objects.filter(branch=branch, stamp_type="order").values_list("stamp_name", flat=True).distinct()
+#
+#     return render(request, "orders/set_standard_request.html", {
+#         "products": products,
+#         "categories": categories,
+#         "second_categories": second_categories,
+#         "requests_today": standard_items,
+#         "selected_category": selected_category,
+#         "page_title": "الطلبية القياسية",
+#         "current_stamp": current_stamp,
+#         "all_stamps": all_stamps,
+#     })
+
 @login_required
 @role_required(["branch"])
 def set_standard_request(request):
@@ -1876,89 +2278,154 @@ def set_standard_request(request):
 
     selected_category = request.session.get("selected_category")
 
-    if request.method == "POST":
-        # ➕ إضافة منتج جديد
-        if "add_item" in request.POST:
-            product_id = request.POST.get("product")
-            qty_raw = request.POST.get("quantity", "1")
+    # ⬅ اسم الاستمبا الحالية من السيشن أو الافتراضي
+    current_stamp = request.session.get("current_stamp_name", "الاستمبا الأساسية")
 
+    # 🧠 لو المستخدم اختار استمبا مختلفة من الـ select أو كتب اسم جديد
+    if request.method == "POST" and "select_stamp" in request.POST:
+        # chosen_name = (request.POST.get("stamp_name") or "").strip()
+        chosen_name = (request.POST.get("new_stamp_name") or request.POST.get("stamp_name") or "").strip()
+
+
+        # لو كتب اسم جديد فاضي؟ رجّع الافتراضي
+        if chosen_name == "":
+            chosen_name = "الاستمبا الأساسية"
+
+        # خزّنه في السيشن
+        request.session["current_stamp_name"] = chosen_name
+        messages.info(request, f"🔄 تم اختيار/إنشاء الاستمبا: {chosen_name}")
+        return redirect("set_standard_request")
+
+    # 🗑 حذف استمبا بالكامل
+    if request.method == "POST" and "delete_stamp" in request.POST:
+        stamp_to_delete = request.POST.get("stamp_to_delete")  # جاية من الفورم
+        if stamp_to_delete:
+            deleted_count, _ = StandardRequest.objects.filter(
+                branch=branch,
+                stamp_type="order",
+                stamp_name=stamp_to_delete
+            ).delete()
+
+            messages.success(
+                request,
+                f"🗑️ تم حذف الاستمبا '{stamp_to_delete}' بالكامل ({deleted_count} صنف)."
+            )
+
+            # لو المستخدم كان واقف على نفس الاستمبا اللي اتمسحت -> رجعه على الافتراضي
+            if request.session.get("current_stamp_name") == stamp_to_delete:
+                request.session["current_stamp_name"] = "الاستمبا الأساسية"
+
+        else:
+            messages.error(request, "⚠️ اختر استمبا قبل الحذف.")
+        return redirect("set_standard_request")
+
+    # ➕ إضافة منتج جديد
+    if request.method == "POST" and "add_item" in request.POST:
+        product_id = request.POST.get("product")
+        qty_raw = request.POST.get("quantity", "1")
+
+        try:
+            qty = Decimal(str(qty_raw)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        except Exception:
+            qty = Decimal('1.00')
+
+        if product_id and qty > 0:
+            product = Product.objects.get(id=product_id)
+            StandardRequest.objects.update_or_create(
+                branch=branch,
+                product=product,
+                stamp_type="order",
+                stamp_name=current_stamp,
+                defaults={
+                    "default_quantity": qty,
+                    "updated_at": timezone.now()
+                }
+            )
+            return JsonResponse({"success": True, "message": f"✅ تمت إضافة {product.name} بكمية {qty} {product.get_unit_display()}."})
+        else:
+            return JsonResponse({"success": False, "message": "⚠️ لم يتم تحديد المنتج أو الكمية."})
+
+
+    # ✏️ تحديث كمية منتج
+    if request.method == "POST" and "update_item" in request.POST:
+        std_id = request.POST.get("request_id") or request.POST.get("update_item")
+        new_qty_raw = request.POST.get(f"new_quantity_{std_id}") or request.POST.get("new_quantity")
+
+        try:
+            new_qty = Decimal(str(new_qty_raw)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        except Exception:
+            new_qty = Decimal('1.00')
+
+        if std_id and new_qty > 0:
             try:
-                qty = Decimal(str(qty_raw)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-            except Exception:
-                qty = Decimal('1.00')
-
-            if product_id and qty > 0:
-                product = Product.objects.get(id=product_id)
-                StandardRequest.objects.update_or_create(
+                sr = StandardRequest.objects.get(
+                    id=std_id,
                     branch=branch,
-                    product=product,
                     stamp_type="order",
-                    defaults={
-                        "default_quantity": qty,
-                        "updated_at": timezone.now()
-                    }
+                    stamp_name=current_stamp
                 )
-                messages.success(request, f"✅ تمت إضافة {product.name} بكمية {qty} {product.get_unit_display()} للطلبية القياسية.")
-            return redirect("set_standard_request")
+                sr.default_quantity = new_qty
+                sr.save()
+                messages.success(
+                    request,
+                    f"✏️ تم تعديل {sr.product.name} إلى {new_qty} {sr.product.get_unit_display()}."
+                )
+            except StandardRequest.DoesNotExist:
+                messages.error(request, "❌ لم يتم العثور على العنصر.")
+        return redirect("set_standard_request")
 
-        # ✏️ تحديث كمية منتج واحد
-        elif "update_item" in request.POST:
-            std_id = request.POST.get("request_id") or request.POST.get("update_item")
-            new_qty_raw = request.POST.get(f"new_quantity_{std_id}") or request.POST.get("new_quantity")
+    # 🗑️ حذف المحدد
+    if request.method == "POST" and "delete_selected" in request.POST:
+        selected_ids = request.POST.getlist("selected_items")
+        if selected_ids:
+            StandardRequest.objects.filter(
+                id__in=selected_ids,
+                branch=branch,
+                stamp_type="order",
+                stamp_name=current_stamp
+            ).delete()
+            messages.success(request, "🗑️ تم حذف العناصر المحددة.")
+        else:
+            messages.warning(request, "⚠️ لم يتم تحديد أي عنصر.")
+        return redirect("set_standard_request")
 
-            try:
-                new_qty = Decimal(str(new_qty_raw)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-            except Exception:
-                new_qty = Decimal('1.00')
+    # ❌ حذف كل عناصر الاستمبا الحالية
+    if request.method == "POST" and "delete_all" in request.POST:
+        StandardRequest.objects.filter(
+            branch=branch,
+            stamp_type="order",
+            stamp_name=current_stamp
+        ).delete()
+        messages.success(request, f"❌ تم حذف جميع العناصر من '{current_stamp}'.")
+        return redirect("set_standard_request")
 
-            if std_id and new_qty > 0:
-                try:
-                    sr = StandardRequest.objects.get(id=std_id, branch=branch, stamp_type="order")
-                    sr.default_quantity = new_qty
-                    sr.save()
-                    messages.success(request, f"✏️ تم تعديل {sr.product.name} إلى {new_qty} {sr.product.get_unit_display()}.")
-                except StandardRequest.DoesNotExist:
-                    messages.error(request, "❌ لم يتم العثور على العنصر المطلوب.")
-            return redirect("set_standard_request")
-
-        # 🗑️ حذف منتج واحد
-        elif "delete_item" in request.POST:
-            std_id = request.POST.get("request_id")
-            if std_id:
-                StandardRequest.objects.filter(id=std_id, branch=branch, stamp_type="order").delete()
-                messages.success(request, "🗑️ تم حذف المنتج بنجاح.")
-            return redirect("set_standard_request")
-
-        # 🗑️ حذف المحدد
-        elif "delete_selected" in request.POST:
-            selected_ids = request.POST.getlist("selected_items")
-            if selected_ids:
-                StandardRequest.objects.filter(id__in=selected_ids, branch=branch, stamp_type="order").delete()
-                messages.success(request, "🗑️ تم حذف العناصر المحددة بنجاح.")
-            else:
-                messages.warning(request, "⚠️ لم يتم تحديد أي عنصر.")
-            return redirect("set_standard_request")
-
-        # ❌ حذف الكل
-        elif "delete_all" in request.POST:
-            StandardRequest.objects.filter(branch=branch, stamp_type="order").delete()
-            messages.success(request, "❌ تم حذف جميع العناصر من الطلبية القياسية.")
-            return redirect("set_standard_request")
-
-    # 🧩 البيانات
+    # ================== GET / عرض الصفحة ==================
     products = Product.objects.filter(is_available=True)
     categories = Category.objects.all()
     second_categories = SecondCategory.objects.all()
-    standard_items = StandardRequest.objects.filter(
-        branch=branch, stamp_type="order"
-    ).select_related("product__category").order_by("product__category__name", "product__name")
 
-    # 🔹 ضبط عرض القيم بدقة
+    # العناصر جوه الاستمبا الحالية
+    standard_items = StandardRequest.objects.filter(
+        branch=branch,
+        stamp_type="order",
+        stamp_name=current_stamp,
+    ).select_related("product__category").order_by(
+        "product__category__name",
+        "product__name"
+    )
+
+    # تجهيز شكل الكمية للعرض
     for item in standard_items:
         if item.product.unit == "kg":
             item.display_quantity = item.default_quantity.quantize(Decimal('0.01'))
         else:
             item.display_quantity = int(item.default_quantity)
+
+    # كل أسماء الاستمبات بتاعت الفرع
+    all_stamps = StandardRequest.objects.filter(
+        branch=branch,
+        stamp_type="order"
+    ).values_list("stamp_name", flat=True).distinct()
 
     return render(request, "orders/set_standard_request.html", {
         "products": products,
@@ -1966,7 +2433,9 @@ def set_standard_request(request):
         "second_categories": second_categories,
         "requests_today": standard_items,
         "selected_category": selected_category,
-        "page_title": "الطلبية القياسية"
+        "page_title": "الطلبية القياسية",
+        "current_stamp": current_stamp,
+        "all_stamps": all_stamps,
     })
 #-------------------------------------------------------
 @login_required
@@ -2475,7 +2944,10 @@ def production_overview(request):
     date_raw = request.GET.get("date")
     branch_filter = request.GET.get("branch", "").strip()
     category_filter = request.GET.get("category", "").strip()  # ✅ جديد
-    hide_zero = request.GET.get("hide_zero", "1") == "1"
+    if "hide_zero" in request.GET:
+        hide_zero = request.GET.get("hide_zero") == "1"
+    else:
+        hide_zero = True
 
     try:
         the_date = datetime.strptime(date_raw, "%Y-%m-%d").date() if date_raw else localdate()
@@ -2541,6 +3013,25 @@ def production_overview(request):
             branch_name = Branch.objects.get(id=branch_filter).name
         except Branch.DoesNotExist:
             branch_name = None
+    # 🔍 فحص حالة كل فرع (هل أكّد كل الأقسام المطلوبة؟)
+    branch_status = []
+    templates_all = ProductionTemplate.objects.filter(is_active=True).values_list("product_id", flat=True)
+
+    for b in Branch.objects.all().order_by("name"):
+        total_required = templates_all.count()
+        confirmed_count = ProductionRequest.objects.filter(
+            branch=b, date=the_date, confirmed=True, product_id__in=templates_all
+        ).count()
+
+        # ✅ لو عدد المنتجات المؤكدة = كل المنتجات المطلوبة
+        is_done = (confirmed_count == total_required and total_required > 0)
+
+        branch_status.append({
+            "branch": b,
+            "done": is_done,
+            "confirmed": confirmed_count,
+            "total": total_required
+        })
 
     return render(request, "orders/production_overview.html", {
         "date": the_date.isoformat(),
@@ -2551,6 +3042,7 @@ def production_overview(request):
         "branch_filter": branch_filter,
         "branch_name": branch_name,
         "category_filter": category_filter,  # ✅ جديد
+        "branch_status": branch_status,
         "hide_zero": hide_zero
     })
 #-----------------------------------------------------

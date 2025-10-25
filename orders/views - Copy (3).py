@@ -2047,114 +2047,6 @@ def add_daily_request(request):
 
     })
 #------------------------------------------------------
-# @login_required
-# @role_required(["branch"])
-# def set_standard_request(request):
-#     profile = getattr(request.user, "userprofile", None)
-#     branch = profile.branch if profile else None
-#
-#     if not branch:
-#         return render(
-#             request,
-#             "orders/no_permission.html",
-#             {"error_message": "🚫 لا يوجد فرع مربوط بحسابك."},
-#             status=403
-#         )
-#
-#     selected_category = request.session.get("selected_category")
-#
-#     if request.method == "POST":
-#         # ➕ إضافة منتج جديد
-#         if "add_item" in request.POST:
-#             product_id = request.POST.get("product")
-#             qty_raw = request.POST.get("quantity", "1")
-#
-#             try:
-#                 qty = Decimal(str(qty_raw)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-#             except Exception:
-#                 qty = Decimal('1.00')
-#
-#             if product_id and qty > 0:
-#                 product = Product.objects.get(id=product_id)
-#                 StandardRequest.objects.update_or_create(
-#                     branch=branch,
-#                     product=product,
-#                     stamp_type="order",
-#                     defaults={
-#                         "default_quantity": qty,
-#                         "updated_at": timezone.now()
-#                     }
-#                 )
-#                 messages.success(request, f"✅ تمت إضافة {product.name} بكمية {qty} {product.get_unit_display()} للطلبية القياسية.")
-#             return redirect("set_standard_request")
-#
-#         # ✏️ تحديث كمية منتج واحد
-#         elif "update_item" in request.POST:
-#             std_id = request.POST.get("request_id") or request.POST.get("update_item")
-#             new_qty_raw = request.POST.get(f"new_quantity_{std_id}") or request.POST.get("new_quantity")
-#
-#             try:
-#                 new_qty = Decimal(str(new_qty_raw)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-#             except Exception:
-#                 new_qty = Decimal('1.00')
-#
-#             if std_id and new_qty > 0:
-#                 try:
-#                     sr = StandardRequest.objects.get(id=std_id, branch=branch, stamp_type="order")
-#                     sr.default_quantity = new_qty
-#                     sr.save()
-#                     messages.success(request, f"✏️ تم تعديل {sr.product.name} إلى {new_qty} {sr.product.get_unit_display()}.")
-#                 except StandardRequest.DoesNotExist:
-#                     messages.error(request, "❌ لم يتم العثور على العنصر المطلوب.")
-#             return redirect("set_standard_request")
-#
-#         # 🗑️ حذف منتج واحد
-#         elif "delete_item" in request.POST:
-#             std_id = request.POST.get("request_id")
-#             if std_id:
-#                 StandardRequest.objects.filter(id=std_id, branch=branch, stamp_type="order").delete()
-#                 messages.success(request, "🗑️ تم حذف المنتج بنجاح.")
-#             return redirect("set_standard_request")
-#
-#         # 🗑️ حذف المحدد
-#         elif "delete_selected" in request.POST:
-#             selected_ids = request.POST.getlist("selected_items")
-#             if selected_ids:
-#                 StandardRequest.objects.filter(id__in=selected_ids, branch=branch, stamp_type="order").delete()
-#                 messages.success(request, "🗑️ تم حذف العناصر المحددة بنجاح.")
-#             else:
-#                 messages.warning(request, "⚠️ لم يتم تحديد أي عنصر.")
-#             return redirect("set_standard_request")
-#
-#         # ❌ حذف الكل
-#         elif "delete_all" in request.POST:
-#             StandardRequest.objects.filter(branch=branch, stamp_type="order").delete()
-#             messages.success(request, "❌ تم حذف جميع العناصر من الطلبية القياسية.")
-#             return redirect("set_standard_request")
-#
-#     # 🧩 البيانات
-#     products = Product.objects.filter(is_available=True)
-#     categories = Category.objects.all()
-#     second_categories = SecondCategory.objects.all()
-#     standard_items = StandardRequest.objects.filter(
-#         branch=branch, stamp_type="order"
-#     ).select_related("product__category").order_by("product__category__name", "product__name")
-#
-#     # 🔹 ضبط عرض القيم بدقة
-#     for item in standard_items:
-#         if item.product.unit == "kg":
-#             item.display_quantity = item.default_quantity.quantize(Decimal('0.01'))
-#         else:
-#             item.display_quantity = int(item.default_quantity)
-#
-#     return render(request, "orders/set_standard_request.html", {
-#         "products": products,
-#         "categories": categories,
-#         "second_categories": second_categories,
-#         "requests_today": standard_items,
-#         "selected_category": selected_category,
-#         "page_title": "الطلبية القياسية"
-#     })
 @login_required
 @role_required(["branch"])
 def set_standard_request(request):
@@ -2162,92 +2054,192 @@ def set_standard_request(request):
     branch = profile.branch if profile else None
 
     if not branch:
-        return render(request, "orders/no_permission.html", {
-            "error_message": "🚫 لا يوجد فرع مربوط بحسابك."
-        }, status=403)
+        return render(
+            request,
+            "orders/no_permission.html",
+            {"error_message": "🚫 لا يوجد فرع مربوط بحسابك."},
+            status=403
+        )
 
     selected_category = request.session.get("selected_category")
 
-    # 🔹 اسم الاستمبا الحالية (من الـ session أو القيمة الافتراضية)
+    # ⬅ اسم الاستمبا الحالية من السيشن أو الافتراضي
     current_stamp = request.session.get("current_stamp_name", "الاستمبا الأساسية")
 
-    # لو تم اختيار استمبا جديدة من القائمة
+    # 🧠 لو المستخدم اختار استمبا مختلفة من الـ select أو كتب اسم جديد
     if request.method == "POST" and "select_stamp" in request.POST:
-        current_stamp = request.POST.get("stamp_name") or "الاستمبا الأساسية"
-        request.session["current_stamp_name"] = current_stamp
-        messages.info(request, f"🔹 تم اختيار الاستمبا: {current_stamp}")
+        # chosen_name = (request.POST.get("stamp_name") or "").strip()
+        chosen_name = (request.POST.get("new_stamp_name") or request.POST.get("stamp_name") or "").strip()
+
+
+        # لو كتب اسم جديد فاضي؟ رجّع الافتراضي
+        if chosen_name == "":
+            chosen_name = "الاستمبا الأساسية"
+
+        # خزّنه في السيشن
+        request.session["current_stamp_name"] = chosen_name
+        messages.info(request, f"🔄 تم اختيار/إنشاء الاستمبا: {chosen_name}")
         return redirect("set_standard_request")
 
-    if request.method == "POST":
-        # ➕ إضافة منتج جديد
-        if "add_item" in request.POST:
-            product_id = request.POST.get("product")
-            qty_raw = request.POST.get("quantity", "1")
+    # 🗑 حذف استمبا بالكامل
+    if request.method == "POST" and "delete_stamp" in request.POST:
+        stamp_to_delete = request.POST.get("stamp_to_delete")  # جاية من الفورم
+        if stamp_to_delete:
+            deleted_count, _ = StandardRequest.objects.filter(
+                branch=branch,
+                stamp_type="order",
+                stamp_name=stamp_to_delete
+            ).delete()
 
+            messages.success(
+                request,
+                f"🗑️ تم حذف الاستمبا '{stamp_to_delete}' بالكامل ({deleted_count} صنف)."
+            )
+
+            # لو المستخدم كان واقف على نفس الاستمبا اللي اتمسحت -> رجعه على الافتراضي
+            if request.session.get("current_stamp_name") == stamp_to_delete:
+                request.session["current_stamp_name"] = "الاستمبا الأساسية"
+
+        else:
+            messages.error(request, "⚠️ اختر استمبا قبل الحذف.")
+        return redirect("set_standard_request")
+
+    # ➕ إضافة منتج جديد
+    if request.method == "POST" and "add_item" in request.POST:
+        product_id = request.POST.get("product")
+        qty_raw = request.POST.get("quantity", "1")
+
+        try:
+            qty = Decimal(str(qty_raw)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        except Exception:
+            qty = Decimal('1.00')
+
+        if product_id and qty > 0:
+            product = Product.objects.get(id=product_id)
+            StandardRequest.objects.update_or_create(
+                branch=branch,
+                product=product,
+                stamp_type="order",
+                stamp_name=current_stamp,
+                defaults={
+                    "default_quantity": qty,
+                    "updated_at": timezone.now()
+                }
+            )
+            return JsonResponse({"success": True, "message": f"✅ تمت إضافة {product.name} بكمية {qty} {product.get_unit_display()}."})
+        else:
+            return JsonResponse({"success": False, "message": "⚠️ لم يتم تحديد المنتج أو الكمية."})
+
+
+    # ✏️ تحديث كمية منتج
+    if request.method == "POST" and "update_item" in request.POST:
+        std_id = request.POST.get("request_id") or request.POST.get("update_item")
+        new_qty_raw = request.POST.get(f"new_quantity_{std_id}") or request.POST.get("new_quantity")
+
+        try:
+            new_qty = Decimal(str(new_qty_raw)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        except Exception:
+            new_qty = Decimal('1.00')
+
+        if std_id and new_qty > 0:
             try:
-                qty = Decimal(str(qty_raw)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-            except Exception:
-                qty = Decimal('1.00')
-
-            if product_id and qty > 0:
-                product = Product.objects.get(id=product_id)
-                StandardRequest.objects.update_or_create(
+                sr = StandardRequest.objects.get(
+                    id=std_id,
                     branch=branch,
-                    product=product,
                     stamp_type="order",
-                    stamp_name=current_stamp,  # 🆕 الاستمبا الحالية
-                    defaults={
-                        "default_quantity": qty,
-                        "updated_at": timezone.now()
-                    }
+                    stamp_name=current_stamp
                 )
-                messages.success(request, f"✅ تمت إضافة {product.name} بكمية {qty} {product.get_unit_display()} إلى {current_stamp}.")
-            return redirect("set_standard_request")
+                sr.default_quantity = new_qty
+                sr.save()
+                messages.success(
+                    request,
+                    f"✏️ تم تعديل {sr.product.name} إلى {new_qty} {sr.product.get_unit_display()}."
+                )
+            except StandardRequest.DoesNotExist:
+                messages.error(request, "❌ لم يتم العثور على العنصر.")
+        return redirect("set_standard_request")
 
-        # ✏️ تحديث كمية منتج
-        elif "update_item" in request.POST:
-            std_id = request.POST.get("request_id") or request.POST.get("update_item")
-            new_qty_raw = request.POST.get(f"new_quantity_{std_id}") or request.POST.get("new_quantity")
+    # 🗑️ حذف المحدد
+    if request.method == "POST" and "delete_selected" in request.POST:
+        selected_ids = request.POST.getlist("selected_items")
+        if selected_ids:
+            StandardRequest.objects.filter(
+                id__in=selected_ids,
+                branch=branch,
+                stamp_type="order",
+                stamp_name=current_stamp
+            ).delete()
 
-            try:
-                new_qty = Decimal(str(new_qty_raw)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-            except Exception:
-                new_qty = Decimal('1.00')
-
-            if std_id and new_qty > 0:
-                try:
-                    sr = StandardRequest.objects.get(id=std_id, branch=branch, stamp_type="order", stamp_name=current_stamp)
-                    sr.default_quantity = new_qty
-                    sr.save()
-                    messages.success(request, f"✏️ تم تعديل {sr.product.name} إلى {new_qty} {sr.product.get_unit_display()}.")
-                except StandardRequest.DoesNotExist:
-                    messages.error(request, "❌ لم يتم العثور على العنصر.")
-            return redirect("set_standard_request")
-
-        # 🗑️ حذف محدد
-        elif "delete_selected" in request.POST:
-            selected_ids = request.POST.getlist("selected_items")
-            if selected_ids:
-                StandardRequest.objects.filter(id__in=selected_ids, branch=branch, stamp_type="order", stamp_name=current_stamp).delete()
+            # ✅ لو الطلب AJAX
+            if request.headers.get("x-requested-with") == "XMLHttpRequest":
+                return JsonResponse({"success": True, "deleted_ids": selected_ids})
+            else:
                 messages.success(request, "🗑️ تم حذف العناصر المحددة.")
-            return redirect("set_standard_request")
+        else:
+            if request.headers.get("x-requested-with") == "XMLHttpRequest":
+                return JsonResponse({"success": False, "message": "⚠️ لم يتم تحديد أي عنصر."})
+            else:
+                messages.warning(request, "⚠️ لم يتم تحديد أي عنصر.")
+        return redirect("set_standard_request")
 
-        # ❌ حذف الكل
-        elif "delete_all" in request.POST:
-            StandardRequest.objects.filter(branch=branch, stamp_type="order", stamp_name=current_stamp).delete()
-            messages.success(request, f"🗑️ تم حذف كل عناصر {current_stamp}.")
-            return redirect("set_standard_request")
+    # 🗑️ حذف منتج واحد
+    if request.method == "POST" and "delete_item" in request.POST or "delete_one" in request.POST:
+        item_id = request.POST.get("delete_item") or request.POST.get("delete_one")
+        try:
+            StandardRequest.objects.get(
+                id=item_id,
+                branch=branch,
+                stamp_type="order",
+                stamp_name=current_stamp
+            ).delete()
+            # استجابة JSON لو الطلب AJAX
+            if request.headers.get("x-requested-with") == "XMLHttpRequest":
+                return JsonResponse({"success": True, "deleted_id": item_id})
+            else:
+                messages.success(request, "🗑️ تم حذف المنتج بنجاح.")
+        except StandardRequest.DoesNotExist:
+            if request.headers.get("x-requested-with") == "XMLHttpRequest":
+                return JsonResponse({"success": False, "message": "❌ المنتج غير موجود."})
+            else:
+                messages.error(request, "❌ المنتج غير موجود.")
+        return redirect("set_standard_request")
+    # ❌ حذف كل عناصر الاستمبا الحالية
+    if request.method == "POST" and "delete_all" in request.POST:
+        StandardRequest.objects.filter(
+            branch=branch,
+            stamp_type="order",
+            stamp_name=current_stamp
+        ).delete()
+        messages.success(request, f"❌ تم حذف جميع العناصر من '{current_stamp}'.")
+        return redirect("set_standard_request")
 
-    # 🧩 البيانات
+    # ================== GET / عرض الصفحة ==================
     products = Product.objects.filter(is_available=True)
     categories = Category.objects.all()
     second_categories = SecondCategory.objects.all()
-    standard_items = StandardRequest.objects.filter(
-        branch=branch, stamp_type="order", stamp_name=current_stamp
-    ).select_related("product__category").order_by("product__category__name", "product__name")
 
-    # قائمة كل الاستمبات الموجودة للفرع
-    all_stamps = StandardRequest.objects.filter(branch=branch, stamp_type="order").values_list("stamp_name", flat=True).distinct()
+    # العناصر جوه الاستمبا الحالية
+    standard_items = StandardRequest.objects.filter(
+        branch=branch,
+        stamp_type="order",
+        stamp_name=current_stamp,
+    ).select_related("product__category").order_by(
+        "product__category__name",
+        "product__name"
+    )
+
+    # تجهيز شكل الكمية للعرض
+    for item in standard_items:
+        if item.product.unit == "kg":
+            item.display_quantity = item.default_quantity.quantize(Decimal('0.01'))
+        else:
+            item.display_quantity = int(item.default_quantity)
+
+    # كل أسماء الاستمبات بتاعت الفرع
+    all_stamps = StandardRequest.objects.filter(
+        branch=branch,
+        stamp_type="order"
+    ).values_list("stamp_name", flat=True).distinct()
 
     return render(request, "orders/set_standard_request.html", {
         "products": products,

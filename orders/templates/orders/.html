@@ -3,7 +3,7 @@
 <div class="container mt-3">
   <h2 class="text-center mb-4 fw-bold">📋 الطلبية القياسية للفرع</h2>
 
-  <form method="post" class="mb-3 text-center">
+  <!-- <form method="post" class="mb-3 text-center">
     {% csrf_token %}
     <label class="fw-bold">🔸 اختر أو أنشئ استمبا:</label>
     <select name="stamp_name" class="form-select d-inline-block w-auto mx-2">
@@ -14,7 +14,71 @@
     <input type="text" name="stamp_name" placeholder="اسم جديد (اختياري)" class="form-control d-inline-block w-auto" style="width:200px;">
     <button type="submit" name="select_stamp" class="btn btn-primary">تبديل / إنشاء</button>
     <p class="text-muted mt-2">الاستمبا الحالية: <strong class="text-success">{{ current_stamp }}</strong></p>
-  </form>
+  </form> -->
+  <div class="card shadow-sm mb-3">
+    <div class="card-body text-center">
+
+      <!-- اختيار / إنشاء استمبا -->
+      <form method="post" class="row g-2 justify-content-center align-items-end">
+        {% csrf_token %}
+        <div class="col-auto">
+          <label class="fw-bold d-block">🗂 الاستمبا الحالية</label>
+          <select name="stamp_name" class="form-select text-center">
+            {% for s in all_stamps %}
+              <option value="{{ s }}" {% if s == current_stamp %}selected{% endif %}>
+                {{ s }}
+              </option>
+            {% endfor %}
+          </select>
+          <small class="text-muted d-block mt-1">أو اكتب اسم جديد تحت 👇</small>
+        </div>
+
+        <div class="col-auto">
+          <label class="fw-bold d-block">➕ استمبا جديدة</label>
+          <input type="text"
+             name="new_stamp_name"
+             class="form-control text-center"
+             placeholder="مثلاً: طلبية رمضان">
+
+        </div>
+
+        <div class="col-auto">
+          <button type="submit" name="select_stamp" class="btn btn-primary">
+            ✅ اختيار / إنشاء
+          </button>
+        </div>
+      </form>
+
+      <hr class="my-3">
+
+      <!-- حذف استمبا بالكامل -->
+      <form method="post" onsubmit="return confirm('⚠ هل أنت متأكد من حذف هذه الاستمبا بالكامل؟');"
+            class="row g-2 justify-content-center align-items-end">
+        {% csrf_token %}
+        <div class="col-auto">
+          <label class="fw-bold d-block text-danger">🗑 احذف استمبا كاملة</label>
+          <select name="stamp_to_delete" class="form-select text-center border-danger text-danger fw-bold">
+            {% for s in all_stamps %}
+              <option value="{{ s }}">{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-auto">
+          <button type="submit" name="delete_stamp" class="btn btn-outline-danger">
+            حذف الاستمبا بالكامل
+          </button>
+        </div>
+      </form>
+
+      <div class="mt-3">
+        <span class="badge bg-success" style="font-size:1rem;">
+          الاستمبا المستخدمة الآن: {{ current_stamp }}
+        </span>
+      </div>
+    </div>
+  </div>
+
 
   <!-- 🔹 الأقسام الرئيسية -->
   <div class="card shadow-sm mb-3">
@@ -74,7 +138,7 @@
   <div id="quantitySection" class="card shadow-sm mb-4 d-none">
     <div class="card-body text-center">
       <h5 class="fw-bold mb-3">📦 المنتج المحدد: <span id="selectedProductName" class="text-success"></span></h5>
-      <form method="post" id="addForm" class="d-flex flex-column flex-sm-row justify-content-center align-items-center gap-2">
+      <form id="addForm" class="d-flex flex-column flex-sm-row justify-content-center align-items-center gap-2">
         {% csrf_token %}
         <input type="hidden" name="product" id="productInput">
         <input type="number" name="quantity" id="quantityInput"
@@ -84,6 +148,8 @@
         <span id="unitLabel" class="fw-bold text-primary" style="font-size:1.1rem;"></span>
         <button type="submit" name="add_item" class="btn btn-success btn-lg px-4">➕ إضافة</button>
       </form>
+      <!-- 🟢 مكان عرض الرسالة -->
+      <div id="addMessage" class="mt-2 text-success fw-bold"></div>
     </div>
   </div>
 
@@ -225,7 +291,31 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   }
 });
+document.getElementById("addForm").addEventListener("submit", function(e) {
+  e.preventDefault(); // منع الـ refresh
 
+  const form = e.target;
+  const formData = new FormData(form);
+
+  // 👇 ضيف مفتاح add_item يدويًا عشان Django يلقطه
+  formData.append("add_item", "1");
+
+  fetch("", {
+    method: "POST",
+    headers: { "X-CSRFToken": formData.get("csrfmiddlewaretoken") },
+    body: formData
+  })
+  .then(res => res.json())
+  .then(data => {
+    const msgDiv = document.getElementById("addMessage");
+    msgDiv.textContent = data.message;
+    msgDiv.style.color = data.success ? "green" : "red";
+    if (data.success) {
+      form.querySelector("#quantityInput").value = "";
+    }
+  })
+  .catch(err => console.error(err));
+});
 </script>
 
 <style>
