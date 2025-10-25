@@ -62,7 +62,7 @@
     <!-- ✅ الجدول بنفس ستايل سجل العمليات -->
     <div class="table-wrapper">
       <table class="styled-table">
-        <!-- <thead>
+        <thead>
           <tr>
             <th>المنتج</th>
             <th>القسم</th>
@@ -83,145 +83,22 @@
             <td colspan="{% if branches %}4{% else %}3{% endif %}" class="text-center">❌ لا توجد منتجات مطابقة.</td>
           </tr>
           {% endfor %}
-        </tbody> -->
-        <thead>
-  <tr>
-    <th>المنتج</th>
-    <th>القسم</th>
-    {% if branches %}<th>الفرع</th>{% endif %}
-    <th>الكمية المتوفرة</th>
-    <th>تحديث الكمية</th> <!-- ✅ العمود الجديد -->
-  </tr>
-</thead>
-<tbody>
-  {% for inv in inventories %}
-  <tr>
-    <td>{{ inv.product.name }}</td>
-    <td>{{ inv.product.category.name }}</td>
-    {% if branches %}<td>{{ inv.branch.name }}</td>{% endif %}
-    <td>{{ inv.quantity }}</td>
-
-    <!-- ✅ عمود التحديث الجديد -->
-    <td>
-      <div class="d-flex justify-content-center align-items-center gap-1">
-        <input type="number"
-               name="new_quantity"
-               min="0"
-               step="0.01"
-               class="form-control form-control-sm text-center fw-bold"
-               style="width: 80px;"
-               placeholder="كمية">
-             <button type="button" class="btn btn-warning btn-sm update-btn" data-product="{{ inv.product.id }}">✏️</button>
-    </td>
-  </tr>
-  {% empty %}
-  <tr>
-    <td colspan="{% if branches %}5{% else %}4{% endif %}" class="text-center">❌ لا توجد منتجات مطابقة.</td>
-  </tr>
-  {% endfor %}
-</tbody>
-
+        </tbody>
       </table>
     </div>
 </div>
 <script>
-// لما الصفحة تخلص تحميل
-window.addEventListener('load', function() {
-  const input = document.getElementById('searchInput');
-  if (input) {
-    // لما العنصر ياخد فوكس يحدد النص كله تلقائيًا
-    input.focus();
-    input.select();
-    // كمان لو رجعت فوكس عليه بعدين يحدد النص برضه
-    input.addEventListener('focus', () => input.select());
-  }
-});
-document.addEventListener("DOMContentLoaded", function() {
-
-  // 🟢 دالة واحدة للتحديث (تستخدم في الزر أو Enter)
-  function updateQuantity(row, productId, newQty, input) {
-    const formData = new FormData();
-    formData.append("product_id", productId);
-    formData.append("new_quantity", newQty);
-
-    fetch("{% url 'update_inventory_quantity' %}", {
-      method: "POST",
-      headers: {
-        "X-CSRFToken": document.querySelector('[name=csrfmiddlewaretoken]').value,
-        "X-Requested-With": "XMLHttpRequest"
-      },
-      body: formData
-    })
-    .then(res => res.json())
-    .then(data => {
-      if (data.success) {
-        // ✅ وميض أخضر لتأكيد التحديث
-        row.style.transition = "background 0.4s";
-        row.style.backgroundColor = "#d4edda";
-        setTimeout(() => row.style.backgroundColor = "", 800);
-
-        // ✅ تحديث العمود في الجدول
-        const allTds = row.querySelectorAll("td");
-        const qtyCell = allTds.length === 5 ? allTds[3] : allTds[2];
-        if (qtyCell) qtyCell.textContent = data.new_qty;
-
-        // ✅ فضي المربع بعد التحديث
-        input.value = "";
-      } else {
-        alert(data.message);
-      }
-    })
-    .catch(err => {
-      console.error(err);
-      alert("❌ حدث خطأ أثناء الاتصال بالخادم.");
-    });
-  }
-
-  // ✏️ عند الضغط على زر التحديث
-  document.querySelectorAll(".update-btn").forEach(btn => {
-    btn.addEventListener("click", function() {
-      const row = this.closest("tr");
-      const input = row.querySelector("input[name='new_quantity']");
-      const newQty = input.value.trim();
-      const productId = this.dataset.product;
-
-      if (!newQty) {
-        alert("⚠️ من فضلك أدخل الكمية الجديدة.");
-        return;
-      }
-
-      updateQuantity(row, productId, newQty, input);
-    });
+  // لما الصفحة تخلص تحميل
+  window.addEventListener('load', function() {
+    const input = document.getElementById('searchInput');
+    if (input) {
+      // لما العنصر ياخد فوكس يحدد النص كله تلقائيًا
+      input.focus();
+      input.select();
+      // كمان لو رجعت فوكس عليه بعدين يحدد النص برضه
+      input.addEventListener('focus', () => input.select());
+    }
   });
-
-  // ⌨️ عند الضغط على Enter داخل input
-  document.querySelectorAll("input[name='new_quantity']").forEach(input => {
-
-    // ✅ يحدد النص تلقائيًا عند التركيز (focus)
-    input.addEventListener("focus", function() {
-      this.select();
-    });
-
-    // ✅ يسمح بالتحديث بالـ Enter
-    input.addEventListener("keydown", function(e) {
-      if (e.key === "Enter") {
-        e.preventDefault(); // يمنع reload أو submit
-        const row = this.closest("tr");
-        const btn = row.querySelector(".update-btn");
-        const productId = btn.dataset.product;
-        const newQty = this.value.trim();
-
-        if (!newQty) {
-          alert("⚠️ من فضلك أدخل الكمية الجديدة.");
-          return;
-        }
-
-        updateQuantity(row, productId, newQty, this);
-      }
-    });
-  });
-
-});
 </script>
 <style>
   html, body {
@@ -312,12 +189,5 @@ document.addEventListener("DOMContentLoaded", function() {
       transform: translateY(0); /* يرجع مكانه لما يتداس */
       box-shadow: 0 2px 6px rgba(0,0,0,0.2);
     }
-    form.d-flex input[type="number"] {
-  max-width: 80px;
-}
-form.d-flex button {
-  min-width: 40px;
-}
-
 </style>
 {% endblock %}

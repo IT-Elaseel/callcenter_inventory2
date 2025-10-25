@@ -1173,6 +1173,55 @@ def update_inventory(request):
             "work_items": work_items,
         },
     )
+#-----------------------------inventory_branch.html----------------------------------
+@login_required
+@role_required(["branch", "admin", "callcenter", "production"])
+def update_inventory_quantity(request):
+    if request.method == "POST" and request.headers.get("x-requested-with") == "XMLHttpRequest":
+        try:
+            product_id = int(request.POST.get("product_id"))
+            new_qty = Decimal(request.POST.get("new_quantity", "0"))
+            profile = getattr(request.user, "userprofile", None)
+            branch = profile.branch if profile else None
+
+            if not branch:
+                return JsonResponse({"success": False, "message": "❌ لا يوجد فرع مرتبط بالمستخدم."})
+
+            # ✅ حدّث الكمية الفعلية في جدول Inventory
+            product = Product.objects.get(id=product_id)
+            inv, _ = Inventory.objects.get_or_create(branch=branch, product=product)
+            inv.quantity = new_qty.quantize(Decimal("0.01"))
+            inv.save()
+            from channels.layers import get_channel_layer
+            from asgiref.sync import async_to_sync
+            # ... داخل update_inventory_quantity بعد ما تحفظ التغيير
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                "callcenter_updates",
+                {
+                    "type": "callcenter_update",
+                    "action": "upsert",
+                    "product_id": product.id,
+                    "product_name": product.name,
+                    "category_name": product.category.name if product.category else "",
+                    "branch_id": inv.branch.id,
+                    "branch_name": inv.branch.name,
+                    "new_qty": str(inv.quantity),
+                    "unit": product.get_unit_display(),
+                    # "message": f"📦 تم تحديث {product.name} في فرع {inv.branch.name} إلى {inv.quantity}",
+                },
+            )
+            return JsonResponse({
+                "success": True,
+                "message": "✅ تم تحديث الكمية بنجاح.",
+                "new_qty": str(inv.quantity)
+            })
+
+        except Exception as e:
+            print("❌ خطأ أثناء تحديث الكمية:", e)
+            return JsonResponse({"success": False, "message": "❌ حدث خطأ أثناء التحديث."})
+
+    return JsonResponse({"success": False, "message": "❌ طلب غير صالح."})
 #---------------------------------------------------------------
 @login_required
 @role_required(["branch"])
@@ -1453,7 +1502,19 @@ def branch_inventory(request):
     # ✅ إخفاء المنتجات ذات الكمية صفر
     inventories = inventories.filter(quantity__gt=0)
 
-    categories = Category.objects.all()
+    # ✅ نحسب الأقسام مرة من كل المخزون (قبل فلترة القسم الحالي)
+    # علشان تفضل القائمة كاملة حتى بعد اختيار قسم
+    all_inventories = Inventory.objects.all()
+
+    # لو المستخدم فرع → فلترها بالفرع فقط
+    if not (request.user.is_superuser or role in ["admin", "callcenter", "production"]):
+        all_inventories = all_inventories.filter(branch=branch)
+
+    # استبعد المنتجات اللي كميتها صفر
+    all_inventories = all_inventories.filter(quantity__gt=0)
+
+    # الأقسام اللي فيها منتجات متوفرة
+    categories = Category.objects.filter(products__inventory__in=all_inventories).distinct().order_by("name")
 
     return render(
         request,
