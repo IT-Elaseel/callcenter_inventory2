@@ -1638,6 +1638,27 @@ def add_user_view(request):
         form = UserCreateForm()
     return render(request, "orders/add_user.html", {"form": form})
 #-------------------------------------------------------------------
+# @login_required
+# def change_password(request):
+#     form = ArabicPasswordChangeForm(user=request.user, data=request.POST or None)
+#     success_message = None
+#     show_modal = False
+
+#     if request.method == "POST":
+#         show_modal = True  # 👈 افتح المودال دايمًا بعد POST
+#         if form.is_valid():
+#             user = form.save()
+#             update_session_auth_hash(request, user)
+#             success_message = "✅ تم تغيير كلمة المرور بنجاح."
+#             form = ArabicPasswordChangeForm(user=request.user)  # reset للفورم بعد النجاح
+
+#         return render(request, "orders/home.html", {   # غير reports.html لصفحتك
+#             "password_form": form,
+#             "success_message": success_message,
+#             "show_modal": show_modal,
+#         })
+
+#     return redirect("home")
 @login_required
 def change_password(request):
     form = ArabicPasswordChangeForm(user=request.user, data=request.POST or None)
@@ -1645,20 +1666,28 @@ def change_password(request):
     show_modal = False
 
     if request.method == "POST":
-        show_modal = True  # 👈 افتح المودال دايمًا بعد POST
+        show_modal = True  # علشان بعد POST المودال يفتح تلقائيًا
         if form.is_valid():
             user = form.save()
             update_session_auth_hash(request, user)
             success_message = "✅ تم تغيير كلمة المرور بنجاح."
             form = ArabicPasswordChangeForm(user=request.user)  # reset للفورم بعد النجاح
+        else:
+            success_message = "❌ حدث خطأ أثناء تغيير كلمة المرور. تأكد من صحة البيانات."
 
-        return render(request, "orders/home.html", {   # غير reports.html لصفحتك
+        # ✅ خليها ترندر نفس صفحة الواجهة الأساسية اللي فيها المودال
+        return render(request, "orders/base.html", {
             "password_form": form,
             "success_message": success_message,
             "show_modal": show_modal,
         })
 
-    return redirect("home")
+    # ❌ بدل redirect("home") خلينا نرجّعه لنفس الصفحة الرئيسية برضو
+    return render(request, "orders/base.html", {
+        "password_form": form,
+        "success_message": None,
+        "show_modal": False,
+    })
 #-------------------------------------------------------------------
 @login_required
 @user_passes_test(is_admin)
