@@ -14,13 +14,14 @@
       <div class="row g-3 align-items-end">
         <div class="col-md-3">
           <label class="form-label">من:</label>
-          <input type="date" class="form-control" name="start_date"value="{{ start_date|default:'' }}" max="{{ today|date:'Y-m-d' }}">
+          <!-- <input type="date" class="form-control" name="start_date"value="{{ start_date|default:'' }}" max="{{ today|date:'Y-m-d' }}"> -->
+          <input type="date" class="form-control" name="start_date" value="{{ start_date|default:'' }}" max="{{ today|date:'Y-m-d' }}" onchange="this.form.submit()">
         </div>
         <div class="col-md-3">
           <label class="form-label">إلى:</label>
-          <input type="date" class="form-control" name="end_date"value="{{ end_date|default:'' }}" max="{{ today|date:'Y-m-d' }}">
+          <!-- <input type="date" class="form-control" name="end_date"value="{{ end_date|default:'' }}" max="{{ today|date:'Y-m-d' }}"> -->
+          <input type="date" class="form-control" name="end_date" value="{{ end_date|default:'' }}" max="{{ today|date:'Y-m-d' }}" onchange="this.form.submit()">
         </div>
-
         {% if branches %}
         <div class="col-md-3">
           <label class="form-label">الفرع:</label>
@@ -34,7 +35,6 @@
           </select>
         </div>
         {% endif %}
-
         <div class="col-md-3">
           <label class="form-label">بحث:</label>
           <input type="text" class="form-control" name="q" value="{{ query|default:'' }}" placeholder="اسم المنتج">

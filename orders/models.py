@@ -142,28 +142,47 @@ class Reservation(models.Model):
         super().save(*args, **kwargs)
 
     def confirm(self, user=None, is_admin=False):
+        """تأكيد أو إعادة تأكيد الحجز"""
         self.status = "confirmed"
-        self.decision_at = self.decision_at or timezone.now()
+        self.decision_at = timezone.now()  # ← تتحدث كل مرة
         if user:
             if is_admin:
                 self.admin_last_modified_at = timezone.now()
                 self.admin_last_modified_by = user
+                self.branch_last_modified_by = None  # لتوضيح إن آخر تعديل من أدمن
             else:
                 self.branch_last_modified_at = timezone.now()
                 self.branch_last_modified_by = user
-        self.save()
+                self.admin_last_modified_by = None  # لتوضيح إن آخر تعديل من فرع
+        self.save(update_fields=[
+            "status", "decision_at", "admin_last_modified_by", "admin_last_modified_at",
+            "branch_last_modified_by", "branch_last_modified_at"
+        ])
+
 
     def cancel(self, user=None, is_admin=False):
+        """إلغاء الحجز"""
         self.status = "cancelled"
-        self.decision_at = self.decision_at or timezone.now()
+        self.decision_at = timezone.now()  # ← تتحدث كل مرة
         if user:
             if is_admin:
                 self.admin_last_modified_at = timezone.now()
                 self.admin_last_modified_by = user
+                self.branch_last_modified_by = None
             else:
                 self.branch_last_modified_at = timezone.now()
                 self.branch_last_modified_by = user
-        self.save()
+                self.admin_last_modified_by = None
+        self.save(update_fields=[
+            "status", "decision_at", "admin_last_modified_by", "admin_last_modified_at",
+            "branch_last_modified_by", "branch_last_modified_at"
+        ])
+    @property
+    def last_decision_time(self):
+        """ترجع آخر تاريخ تم فيه تعديل قرار الحجز"""
+        return self.admin_last_modified_at or self.branch_last_modified_at or self.decision_at
+
+
 #-------------------------------------------------------------------
 class InventoryTransaction(models.Model):
     TRANSACTION_TYPES = [
@@ -200,6 +219,7 @@ class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     branch = models.ForeignKey(Branch, on_delete=models.SET_NULL, null=True, blank=True)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='branch')
+    phone = models.CharField(max_length=15, blank=True, null=True)  # ✅ الجديد
      # ✨ الجديد
     last_password_reset = models.DateTimeField(null=True, blank=True)
 

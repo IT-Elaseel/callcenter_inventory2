@@ -16,19 +16,33 @@
     <form method="get" id="filterForm" class="filters row g-3 align-items-end">
       <div class="col-md-2">
         <label class="form-label">من:</label>
-        <input type="date" class="form-control" name="start_date" value="{{ start_date|default:'' }}"max="{{ today|date:'Y-m-d' }}">
+        <!-- <input type="date" class="form-control" name="start_date" value="{{ start_date|default:'' }}"max="{{ today|date:'Y-m-d' }}"> -->
+        <input type="date" class="form-control" name="start_date" value="{{ start_date|default:'' }}" max="{{ today|date:'Y-m-d' }}" onchange="this.form.submit()">
       </div>
 
       <div class="col-md-2">
         <label class="form-label">إلى:</label>
-        <input type="date" class="form-control" name="end_date" value="{{ end_date|default:'' }}"max="{{ today|date:'Y-m-d' }}">
+        <!-- <input type="date" class="form-control" name="end_date" value="{{ end_date|default:'' }}"max="{{ today|date:'Y-m-d' }}"> -->
+        <input type="date" class="form-control" name="end_date" value="{{ end_date|default:'' }}" max="{{ today|date:'Y-m-d' }}" onchange="this.form.submit()">
       </div>
 
       <div class="col-md-2">
         <label class="form-label">بحث:</label>
         <input type="text" class="form-control" name="q" value="{{ query|default:'' }}" placeholder="اسم العميل أو رقم الهاتف">
       </div>
-
+      {% if branches %}
+      <div class="col-md-2">
+        <label class="form-label">الفرع:</label>
+        <select name="branch" class="form-select" onchange="this.form.submit()">
+          <option value="all" {% if not selected_branch %}selected{% endif %}>-- كل الفروع --</option>
+          {% for b in branches %}
+            <option value="{{ b.id }}" {% if selected_branch == b.id %}selected{% endif %}>
+              {{ b.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
       <div class="col-md-3">
         <button type="submit" class="custom-btn btn-success btn-view">عرض</button>
       </div>
@@ -49,8 +63,9 @@
           <th>طريقة التوصيل</th>
           <th>الحالة</th>
           <th>تاريخ الإنشاء</th>
+          <th>آخر من عدّل الحالة</th>
           <th>تاريخ القرار</th>
-          <th>آخر إجراء للفرع</th>
+          <th>آخر تاريخ لتحديث القرار</th>
           <th>تم الحجز بواسطة</th>
           <th>الإجراءات</th>
         </tr>
@@ -67,10 +82,20 @@
           <td>{{ res.get_delivery_type_display }}</td>
           <td>{{ res.get_status_display }}</td>
           <td>{{ res.created_at|date:"Y-m-d H:i:s" }}</td>
+          <td>
+            {% if res.admin_last_modified_by %}
+              {{ res.admin_last_modified_by.username }}
+            {% elif res.branch_last_modified_by %}
+              {{ res.branch_last_modified_by.username }}
+            {% else %}
+              -
+            {% endif %}
+          </td>
+
           <td>{{ res.decision_at|date:"Y-m-d H:i:s" }}</td>
           <td>
-            {% if res.branch_last_modified_at %}
-              {{ res.branch_last_modified_at|date:"Y-m-d H:i:s" }}
+            {% if res.last_decision_time %}
+              {{ res.last_decision_time|date:"Y-m-d H:i:s" }}
             {% else %}-{% endif %}
           </td>
           <td>
@@ -257,6 +282,7 @@ function buildRowHtml(d) {
       <td>${d.delivery_type}</td>
       <td>${d.status}</td>
       <td>${d.created_at || "-"}</td>
+      <td>${d.last_modified_by || "-"}</td>
       <td>${d.decision_at || "-"}</td>
       <td>${d.branch_last_modified_at || "-"}</td>
       <td>${d.reserved_by || "-"}</td>
@@ -280,38 +306,31 @@ function insertOrUpdateRow(d) {
     row.outerHTML = buildRowHtml(d);
   }
 }
-
 reservationsSocket.onmessage = (event) => {
   const data = JSON.parse(event.data);
   console.log("📋 Reservations update:", data);
 
-  if (data.message) showToast(data.message, "info");
-
-  // new حجز جديد → ضيف صف
-  if (data.action === "new") {
-    insertOrUpdateRow(data);
-  }
-  // status_change → عدّل الصف
-  else if (data.action === "status_change") {
+  // 🔄 تحديث أو إدراج الصف الجديد فورًا
+  if (data.action === "new" || data.action === "status_change") {
     insertOrUpdateRow(data);
   }
 };
 
 // ✅ Toast صغير
-function showToast(message, type) {
-  const color = type === "success" ? "#28a745" :
-                type === "error" ? "#dc3545" : "#007bff";
-  const toast = document.createElement("div");
-  toast.textContent = message;
-  toast.style.cssText = `
-    position: fixed; bottom: 20px; right: 20px;
-    background: ${color}; color: white;
-    padding: 10px 15px; border-radius: 6px;
-    box-shadow: 0 0 5px rgba(0,0,0,0.3);
-    z-index: 9999; font-size: 14px;
-  `;
-  document.body.appendChild(toast);
-  setTimeout(() => toast.remove(), 3000);
-}
+// function showToast(message, type) {
+//   const color = type === "success" ? "#28a745" :
+//                 type === "error" ? "#dc3545" : "#007bff";
+//   const toast = document.createElement("div");
+//   toast.textContent = message;
+//   toast.style.cssText = `
+//     position: fixed; bottom: 20px; right: 20px;
+//     background: ${color}; color: white;
+//     padding: 10px 15px; border-radius: 6px;
+//     box-shadow: 0 0 5px rgba(0,0,0,0.3);
+//     z-index: 9999; font-size: 14px;
+//   `;
+//   document.body.appendChild(toast);
+//   setTimeout(() => toast.remove(), 3000);
+// }
 </script>
 {% endblock %}

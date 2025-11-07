@@ -46,10 +46,24 @@
                     <td>{{ group.grouper.category.name }}</td>
                     <td>
                         {% for inv in group.list %}
-                            {% if inv.quantity > 0 %}
-                              🏬 {{ inv.branch.name }}:
-                              <span class="qty-display">{{ inv.quantity|floatformat:2 }}</span>
-                              <span class="unit-label">{{ inv.product.get_unit_display }}</span><br>                            {% endif %}
+                        {% if inv.product.unit == "kg" %}
+                            {% if inv.quantity == 999 %}
+                                🏬 {{ inv.branch.name }}: 🟢 متاح<br>
+                            {% elif inv.quantity == 998 %}
+                                🏬 {{ inv.branch.name }}: 🟡 بالحجز<br>
+                            {% endif %}
+                        {% elif inv.quantity > 0 %}
+                            🏬 {{ inv.branch.name }}:
+                            <span class="qty-display">
+                              {% if inv.product.unit == "kg" %}
+                                {{ inv.quantity|floatformat:2 }}
+                              {% else %}
+                                {{ inv.quantity|floatformat:0 }}
+                              {% endif %}
+                            </span>
+                            <span class="unit-label">{{ inv.product.get_unit_display }}</span><br>
+                        {% endif %}
+
                         {% endfor %}
                     </td>
                     <td>

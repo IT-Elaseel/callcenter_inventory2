@@ -130,9 +130,7 @@ def callcenter(request):
     category_id = request.GET.get("category")
 
     inventories = Inventory.objects.select_related("product", "branch", "product__category").filter(quantity__gt=0)
-    # categories = Category.objects.all()
-    available_category_ids = Inventory.objects.filter(quantity__gt=0).values_list("product__category_id", flat=True).distinct()
-    categories = Category.objects.filter(id__in=available_category_ids)
+    categories = Category.objects.all()
 
     if query:
         inventories = inventories.filter(product__name__icontains=query)
@@ -198,13 +196,8 @@ def callcenter(request):
                 )
 
                 # خصم وتثبيت بدقتين عشريتين
-                # inventory.quantity = (inventory.quantity - qty).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                # inventory.save()
-                # ✅ لو المنتج بالكيلو لا تخصم منه كمية (يبقى 999 أو 998 كما هو)
-                if product.unit != "kg":
-                    inventory.quantity = (inventory.quantity - qty).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                    inventory.save()
-
+                inventory.quantity = (inventory.quantity - qty).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                inventory.save()
 
             # ✅ WebSocket: ابعت أرقام كـ string لتفادي Decimal serialization
             channel_layer = get_channel_layer()
@@ -288,7 +281,6 @@ def reservations_list(request):
     start_raw = request.GET.get("start_date", "")
     end_raw   = request.GET.get("end_date", "")
     query     = request.GET.get("q", "").strip()
-    branch_filter = request.GET.get("branch", "")  # الفلتر الجديد
 
     # الافتراضي: النهارده
     if not start_raw or not end_raw:
@@ -312,9 +304,6 @@ def reservations_list(request):
         reservations = reservations.filter(branch=branch)
 
     reservations = reservations.filter(created_at__date__range=[start_date, end_date])
-    # فلترة بالفرع (للأدمن فقط)
-    if branch_filter and branch_filter != "all":
-        reservations = reservations.filter(branch_id=branch_filter)
 
     # 🔎 البحث باسم العميل أو رقم تليفونه
     if query:
@@ -337,11 +326,58 @@ def reservations_list(request):
             "end_date": end_raw,
             "query": query,
             "today": today,  # ← أضفها
-            "branches": Branch.objects.all(),  # علشان نعرضهم في الفلتر
-            "selected_branch": int(branch_filter) if branch_filter and branch_filter != "all" else None,
         },
     )
 #-------------------------------------------------------------
+# def update_reservation_status(request, res_id, status):
+#     reservation = get_object_or_404(Reservation, id=res_id)
+#     profile = getattr(request.user, "userprofile", None)
+#     is_admin = profile and profile.role == "admin"
+#
+#     # ✅ تحديث الحالة في قاعدة البيانات
+#     if status == "confirmed":
+#         reservation.confirm(user=request.user, is_admin=is_admin)
+#         msg = f"✅ تم تأكيد الحجز للعميل {reservation.customer}"
+#         messages.success(request, msg)
+#     elif status == "cancelled":
+#         reservation.cancel(user=request.user, is_admin=is_admin)
+#         msg = f"❌ تم إلغاء الحجز للعميل {reservation.customer}"
+#         messages.warning(request, msg)
+#     else:
+#         messages.error(request, "⚠️ حالة غير معروفة")
+#         return redirect(request.META.get("HTTP_REFERER", "branch_dashboard"))
+#     # 🕒 حدث توقيت آخر إجراء للفرع
+#     reservation.branch_last_modified_at = timezone.now()
+#     reservation.save(update_fields=["branch_last_modified_at"])
+#
+#     # 🔁 مهم جدًا: نرجّع نحمل نسخة حديثة من قاعدة البيانات
+#     reservation.refresh_from_db()
+#     # ============================================================
+#     # 🔄 إرسال إشعار لتحديث صفحة الحجوزات عبر WebSocket
+#     # ============================================================
+#     channel_layer = get_channel_layer()
+#     async_to_sync(channel_layer.group_send)(
+#         "reservations_updates",
+#         {
+#             "type": "reservations_update",      # ← لازم يطابق اسم الدالة في consumer
+#             "action": "status_change",          # نميّز نوع التحديث
+#             "message": msg,
+#             "reservation_id": reservation.id,
+#             "customer_name": reservation.customer.name if reservation.customer else "-",
+#             "customer_phone": reservation.customer.phone if reservation.customer else "-",
+#             "product_name": reservation.product.name,
+#             "quantity": reservation.quantity,
+#             "branch_name": reservation.branch.name,
+#             "delivery_type": reservation.get_delivery_type_display(),
+#             "status": reservation.get_status_display(),
+#             "created_at": timezone.localtime(reservation.created_at).strftime('%Y-%m-%d %H:%M:%S'),
+#             "decision_at": timezone.localtime(reservation.decision_at).strftime('%Y-%m-%d %H:%M:%S') if reservation.decision_at else "",
+#             "branch_last_modified_at": timezone.localtime(reservation.branch_last_modified_at).strftime('%Y-%m-%d %H:%M:%S') if reservation.branch_last_modified_at else "-",
+#             "reserved_by": reservation.reserved_by.username if reservation.reserved_by else "-",
+#         },
+#     )
+#
+#     return redirect(request.META.get("HTTP_REFERER", "branch_dashboard"))
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.utils import timezone
@@ -349,33 +385,44 @@ from django.shortcuts import get_object_or_404, redirect
 from django.contrib import messages
 from .models import Reservation, Inventory
 
+
 def update_reservation_status(request, res_id, status):
+    # 🟢 نحضر بيانات الحجز المطلوبة
     reservation = get_object_or_404(Reservation, id=res_id)
     profile = getattr(request.user, "userprofile", None)
     is_admin = profile and profile.role == "admin"
-    user = request.user
+
+    # 🧩 جروب السوكيت اللى هنبعتله التحديث
     channel_layer = get_channel_layer()
 
-    old_status = reservation.status
-
-    # ===============================
-    # ✅ تأكيد / إعادة تأكيد
-    # ===============================
+    # -------------------------------------------------------------
+    # 🟢 الحالة 1: تأكيد أو إعادة تأكيد الحجز
+    # -------------------------------------------------------------
     if status == "confirmed":
-        reservation.confirm(user=user, is_admin=is_admin)
-        msg = f"✅ تم تأكيد الحجز للعميل {reservation.customer}"
+        old_status = reservation.status  # نحتفظ بالحالة القديمة قبل التغيير
 
-        # لو إعادة تأكيد بعد إلغاء → خصم الكمية تاني
+        # ✅ استدعاء دالة التأكيد في الموديل (بتغير الحالة وتسجل الوقت والمستخدم)
+        reservation.confirm(user=request.user, is_admin=is_admin)
+
+        msg = f"✅ تم تأكيد الحجز للعميل {reservation.customer}"
+        messages.success(request, msg)
+
+        # 🟢 لو الحالة القديمة كانت 'cancelled' → يبقى دي إعادة تأكيد → نخصم الكمية تاني
         if old_status == "cancelled":
             try:
                 inv = Inventory.objects.get(product=reservation.product, branch=reservation.branch)
-                inv.quantity = max(inv.quantity - reservation.quantity, 0)
+                inv.quantity -= reservation.quantity
+                if inv.quantity < 0:
+                    inv.quantity = 0
                 inv.save(update_fields=["quantity"])
+
+                # 🔄 تحديث لحظي للكول سنتر عبر WebSocket
                 async_to_sync(channel_layer.group_send)(
                     "callcenter_updates",
                     {
                         "type": "callcenter_update",
                         "action": "inventory_update",
+                        # "message": f"📦 تم خصم {reservation.quantity} من {reservation.product.name} في {reservation.branch.name} بعد إعادة التأكيد.",
                         "product_id": reservation.product.id,
                         "product_name": reservation.product.name,
                         "category_name": getattr(reservation.product.category, 'name', ''),
@@ -388,23 +435,27 @@ def update_reservation_status(request, res_id, status):
             except Inventory.DoesNotExist:
                 print("⚠️ لا يوجد سجل مخزون لهذا المنتج في هذا الفرع")
 
-    # ===============================
-    # ❌ إلغاء
-    # ===============================
+    # -------------------------------------------------------------
+    # 🟠 الحالة 2: إلغاء الحجز
+    # -------------------------------------------------------------
     elif status == "cancelled":
-        reservation.cancel(user=user, is_admin=is_admin)
+        reservation.cancel(user=request.user, is_admin=is_admin)
         msg = f"❌ تم إلغاء الحجز للعميل {reservation.customer}"
+        messages.warning(request, msg)
 
-        # استرجاع الكمية للمخزون
+        # 🔁 استرجاع الكمية للمخزون
         try:
             inv = Inventory.objects.get(product=reservation.product, branch=reservation.branch)
             inv.quantity += reservation.quantity
             inv.save(update_fields=["quantity"])
+
+            # 🔄 إشعار WebSocket للكول سنتر
             async_to_sync(channel_layer.group_send)(
                 "callcenter_updates",
                 {
                     "type": "callcenter_update",
                     "action": "inventory_update",
+                    # "message": f"🔄 تم إرجاع {reservation.quantity} من {reservation.product.name} إلى {reservation.branch.name} بعد الإلغاء.",
                     "product_id": reservation.product.id,
                     "product_name": reservation.product.name,
                     "category_name": getattr(reservation.product.category, 'name', ''),
@@ -417,28 +468,23 @@ def update_reservation_status(request, res_id, status):
         except Inventory.DoesNotExist:
             print("⚠️ لا يوجد سجل مخزون مطابق لهذا الحجز")
 
+    # -------------------------------------------------------------
+    # 🔴 الحالة 3: حالة غير معروفة
+    # -------------------------------------------------------------
     else:
         messages.error(request, "⚠️ حالة غير معروفة")
         return redirect(request.META.get("HTTP_REFERER", "reservations_list"))
 
-    # ✅ سجل آخر من عدّل الحالة + التوقيت
-    if is_admin:
-        reservation.admin_last_modified_by = user
-        reservation.admin_last_modified_at = timezone.now()
-    else:
-        reservation.branch_last_modified_by = user
-        reservation.branch_last_modified_at = timezone.now()
-
-    # لو أول مرة يتحجز بدون reserved_by → سجلها
-    if not reservation.reserved_by:
-        reservation.reserved_by = user
-
-    reservation.save()
+    # -------------------------------------------------------------
+    # 🕒 تحديث توقيت آخر تعديل للفرع
+    # -------------------------------------------------------------
+    reservation.branch_last_modified_at = timezone.now()
+    reservation.save(update_fields=["branch_last_modified_at"])
     reservation.refresh_from_db()
 
-    # =====================================================
-    # 🔄 إرسال تحديث لحظي عبر WebSocket
-    # =====================================================
+    # -------------------------------------------------------------
+    # 📢 إشعار لحظي إلى صفحة الحجوزات (Reservations Dashboard)
+    # -------------------------------------------------------------
     async_to_sync(channel_layer.group_send)(
         "reservations_updates",
         {
@@ -455,23 +501,12 @@ def update_reservation_status(request, res_id, status):
             "status": reservation.get_status_display(),
             "created_at": timezone.localtime(reservation.created_at).strftime('%Y-%m-%d %H:%M:%S'),
             "decision_at": timezone.localtime(reservation.decision_at).strftime('%Y-%m-%d %H:%M:%S') if reservation.decision_at else "",
-            "branch_last_modified_at": (
-                timezone.localtime(reservation.admin_last_modified_at).strftime('%Y-%m-%d %H:%M:%S')
-                if reservation.admin_last_modified_at else
-                timezone.localtime(reservation.branch_last_modified_at).strftime('%Y-%m-%d %H:%M:%S')
-                if reservation.branch_last_modified_at else
-                timezone.localtime(reservation.decision_at).strftime('%Y-%m-%d %H:%M:%S')
-                if reservation.decision_at else ""
-            ),
+            "branch_last_modified_at": timezone.localtime(reservation.branch_last_modified_at).strftime('%Y-%m-%d %H:%M:%S'),
             "reserved_by": reservation.reserved_by.username if reservation.reserved_by else "-",
-            "last_modified_by": (
-                reservation.admin_last_modified_by.username if reservation.admin_last_modified_by else
-                reservation.branch_last_modified_by.username if reservation.branch_last_modified_by else "-"
-            ),
         },
     )
 
-    messages.success(request, msg)
+    # ✅ رجوع لنفس الصفحة بعد الإجراء
     return redirect(request.META.get("HTTP_REFERER", "reservations_list"))
 #-------------------------------------------------------------
 @login_required
@@ -1087,6 +1122,7 @@ def update_inventory(request):
         request.session["selected_category"] = selected_category
     else:
         selected_category = request.session.get("selected_category")
+
     products = Product.objects.filter(is_available=True)
     if selected_category:
         products = products.filter(category_id=selected_category)
@@ -1094,46 +1130,35 @@ def update_inventory(request):
     inventories = Inventory.objects.filter(branch=branch).select_related("product")
     second_categories = SecondCategory.objects.all()
 
+
     # جهّز العناصر المعروضة في الجدول (من worklist)
     work_items = []
     if worklist:
-        # رجّع كل المنتجات مرة واحدة وضم العلاقات الخاصة بالأقسام للترتيب
-        plist = (
-            Product.objects
-            .filter(id__in=[int(k) for k in worklist.keys()])
-            .select_related("category", "second_category__main_category")
-            .order_by("second_category__main_category__name", "second_category__name", "name")
-        )
+        # رجّع كل المنتجات مرة واحدة
+        plist = Product.objects.filter(id__in=[int(k) for k in worklist.keys()]).select_related("category")
         prod_map = {str(p.id): p for p in plist}
 
-        # جهّز العناصر المعروضة في الجدول (من worklist)
-        work_items = []
-        if worklist:
-            plist = (
-                Product.objects
-                .filter(id__in=[int(k) for k in worklist.keys()])
-                .select_related("category", "second_category__main_category")
-                .order_by("second_category__main_category__name", "second_category__name", "name")
-            )
+        for pid, qty_str in worklist.items():
+            p = prod_map.get(str(pid))
+            if not p:
+                continue
 
-            for p in plist:
-                pid = str(p.id)
-                qty_str = worklist.get(pid)
-                if qty_str is None:
-                    continue
+            # 👇 التحويل المضمون
+            try:
+                display_qty = Decimal(str(qty_str)).quantize(Decimal('0.01'))
+            except Exception:
+                display_qty = Decimal('0.00')
 
-                try:
-                    display_qty = Decimal(str(qty_str)).quantize(Decimal("0.01"))
-                except Exception:
-                    display_qty = Decimal("0.00")
+            # 👇 لو المنتج بالكيلو نعرضها كما هي (مثلاً 1.25)
+            # لو بالعدد نحولها لصحيح
+            if p.unit != "kg":
+                display_qty = display_qty.to_integral_value()
 
-                if p.unit != "kg":
-                    display_qty = display_qty.to_integral_value()
+            work_items.append({
+                "product": p,
+                "quantity": display_qty,
+            })
 
-                work_items.append({
-                    "product": p,
-                    "quantity": display_qty,
-                })
     return render(
         request,
         "orders/update_inventory.html",
@@ -1148,55 +1173,6 @@ def update_inventory(request):
             "work_items": work_items,
         },
     )
-#-----------------------------inventory_branch.html----------------------------------
-@login_required
-@role_required(["branch", "admin", "callcenter", "production"])
-def update_inventory_quantity(request):
-    if request.method == "POST" and request.headers.get("x-requested-with") == "XMLHttpRequest":
-        try:
-            product_id = int(request.POST.get("product_id"))
-            new_qty = Decimal(request.POST.get("new_quantity", "0"))
-            profile = getattr(request.user, "userprofile", None)
-            branch = profile.branch if profile else None
-
-            if not branch:
-                return JsonResponse({"success": False, "message": "❌ لا يوجد فرع مرتبط بالمستخدم."})
-
-            # ✅ حدّث الكمية الفعلية في جدول Inventory
-            product = Product.objects.get(id=product_id)
-            inv, _ = Inventory.objects.get_or_create(branch=branch, product=product)
-            inv.quantity = new_qty.quantize(Decimal("0.01"))
-            inv.save()
-            from channels.layers import get_channel_layer
-            from asgiref.sync import async_to_sync
-            # ... داخل update_inventory_quantity بعد ما تحفظ التغيير
-            channel_layer = get_channel_layer()
-            async_to_sync(channel_layer.group_send)(
-                "callcenter_updates",
-                {
-                    "type": "callcenter_update",
-                    "action": "upsert",
-                    "product_id": product.id,
-                    "product_name": product.name,
-                    "category_name": product.category.name if product.category else "",
-                    "branch_id": inv.branch.id,
-                    "branch_name": inv.branch.name,
-                    "new_qty": str(inv.quantity),
-                    "unit": product.get_unit_display(),
-                    # "message": f"📦 تم تحديث {product.name} في فرع {inv.branch.name} إلى {inv.quantity}",
-                },
-            )
-            return JsonResponse({
-                "success": True,
-                "message": "✅ تم تحديث الكمية بنجاح.",
-                "new_qty": str(inv.quantity)
-            })
-
-        except Exception as e:
-            print("❌ خطأ أثناء تحديث الكمية:", e)
-            return JsonResponse({"success": False, "message": "❌ حدث خطأ أثناء التحديث."})
-
-    return JsonResponse({"success": False, "message": "❌ طلب غير صالح."})
 #---------------------------------------------------------------
 @login_required
 @role_required(["branch"])
@@ -1477,19 +1453,7 @@ def branch_inventory(request):
     # ✅ إخفاء المنتجات ذات الكمية صفر
     inventories = inventories.filter(quantity__gt=0)
 
-    # ✅ نحسب الأقسام مرة من كل المخزون (قبل فلترة القسم الحالي)
-    # علشان تفضل القائمة كاملة حتى بعد اختيار قسم
-    all_inventories = Inventory.objects.all()
-
-    # لو المستخدم فرع → فلترها بالفرع فقط
-    if not (request.user.is_superuser or role in ["admin", "callcenter", "production"]):
-        all_inventories = all_inventories.filter(branch=branch)
-
-    # استبعد المنتجات اللي كميتها صفر
-    all_inventories = all_inventories.filter(quantity__gt=0)
-
-    # الأقسام اللي فيها منتجات متوفرة
-    categories = Category.objects.filter(products__inventory__in=all_inventories).distinct().order_by("name")
+    categories = Category.objects.all()
 
     return render(
         request,
@@ -1620,28 +1584,20 @@ def change_password(request):
     show_modal = False
 
     if request.method == "POST":
-        show_modal = True  # علشان بعد POST المودال يفتح تلقائيًا
+        show_modal = True  # 👈 افتح المودال دايمًا بعد POST
         if form.is_valid():
             user = form.save()
             update_session_auth_hash(request, user)
             success_message = "✅ تم تغيير كلمة المرور بنجاح."
             form = ArabicPasswordChangeForm(user=request.user)  # reset للفورم بعد النجاح
-        else:
-            success_message = "❌ حدث خطأ أثناء تغيير كلمة المرور. تأكد من صحة البيانات."
 
-        # ✅ خليها ترندر نفس صفحة الواجهة الأساسية اللي فيها المودال
-        return render(request, "orders/base.html", {
+        return render(request, "orders/home.html", {   # غير reports.html لصفحتك
             "password_form": form,
             "success_message": success_message,
             "show_modal": show_modal,
         })
 
-    # ❌ بدل redirect("home") خلينا نرجّعه لنفس الصفحة الرئيسية برضو
-    return render(request, "orders/base.html", {
-        "password_form": form,
-        "success_message": None,
-        "show_modal": False,
-    })
+    return redirect("home")
 #-------------------------------------------------------------------
 @login_required
 @user_passes_test(is_admin)
@@ -1695,109 +1651,10 @@ def manage_data(request):
         "success_message": success_message,
     })
 #------------------------------------------------------------------
-# @login_required
-# @user_passes_test(is_admin)
-# def manage_users(request):
-#     # users = User.objects.all()
-#     users = User.objects.select_related("userprofile__branch").all()
-#
-#     # ✅ فلترة بالاسم
-#     username = request.GET.get("username", "")
-#     if username:
-#         users = users.filter(username__icontains=username)
-#
-#     # ✅ فلترة بالنوع (role)
-#     role = request.GET.get("role", "")
-#     if role:
-#         users = users.filter(userprofile__role=role)
-#
-#     # ✅ POST (حذف أو إعادة تعيين باسورد)
-#     if request.method == "POST":
-#         if "delete_user" in request.POST:
-#             user_id = request.POST.get("delete_user")
-#             User.objects.filter(id=user_id).delete()
-#
-#         elif "reset_password" in request.POST:
-#             user_id = request.POST.get("reset_password")
-#             u = User.objects.get(id=user_id)
-#             u.set_password(settings.DEFAULT_USER_PASSWORD)
-#             u.save()
-#
-#             if hasattr(u, "userprofile"):
-#                 u.userprofile.last_password_reset = timezone.now()
-#                 u.userprofile.save()
-#
-#         # ✅ بعد أي أكشن: رجع لنفس الرابط بالفلترة الحالية
-#         return redirect(request.get_full_path())
-#
-#     return render(request, "orders/manage_users.html", {
-#         "users": users,
-#         "username": username,
-#         "role": role,
-#     })
-# @login_required
-# @user_passes_test(is_admin)
-# def manage_users(request):
-#     # ✅ اجلب المستخدمين مع بيانات الفرع
-#     users = User.objects.select_related("userprofile__branch").all()
-#
-#     # ✅ فلترة بالاسم
-#     username = request.GET.get("username", "")
-#     if username:
-#         users = users.filter(username__icontains=username)
-#
-#     # ✅ فلترة بالنوع (role)
-#     role = request.GET.get("role", "")
-#     if role:
-#         users = users.filter(userprofile__role=role)
-#
-#     # ✅ فلترة بالفرع (تعمل فقط لو الفلتر على نوع فرع)
-#     branch_id = request.GET.get("branch_id", "")
-#     if role == "branch" and branch_id:
-#         users = users.filter(userprofile__branch_id=branch_id)
-#
-#     # ✅ جلب الفروع كلها علشان نعرضها في الفلتر
-#     from .models import Branch
-#     branches = Branch.objects.all()
-#
-#     # ✅ POST (تفعيل / إلغاء تفعيل / حذف / إعادة تعيين)
-#     if request.method == "POST":
-#         if "delete_user" in request.POST:
-#             user_id = request.POST.get("delete_user")
-#             User.objects.filter(id=user_id).delete()
-#
-#         elif "toggle_active" in request.POST:
-#             user_id = request.POST.get("toggle_active")
-#             u = User.objects.get(id=user_id)
-#             u.is_active = not u.is_active  # 🔁 يقلب الحالة
-#             u.save()
-#
-#         elif "reset_password" in request.POST:
-#             user_id = request.POST.get("reset_password")
-#             u = User.objects.get(id=user_id)
-#             u.set_password(settings.DEFAULT_USER_PASSWORD)
-#             u.save()
-#
-#             if hasattr(u, "userprofile"):
-#                 u.userprofile.last_password_reset = timezone.now()
-#                 u.userprofile.save()
-#
-#         # ✅ بعد أي أكشن: رجع لنفس الرابط بالفلترة الحالية
-#         return redirect(request.get_full_path())
-#
-#
-#     # ✅ أرسل كل القيم المطلوبة للـ template
-#     return render(request, "orders/manage_users.html", {
-#         "users": users,
-#         "username": username,
-#         "role": role,
-#         "branches": branches,     # 🆕 لإظهار قائمة الفروع في الفلتر
-#         "branch_id": branch_id,   # 🆕 لحفظ الاختيار الحالي
-#     })
 @login_required
 @user_passes_test(is_admin)
 def manage_users(request):
-    users = User.objects.select_related("userprofile__branch").all()
+    users = User.objects.all()
 
     # ✅ فلترة بالاسم
     username = request.GET.get("username", "")
@@ -1809,33 +1666,11 @@ def manage_users(request):
     if role:
         users = users.filter(userprofile__role=role)
 
-    # ✅ فلترة بالفرع (لو الدور فرع)
-    branch_id = request.GET.get("branch_id", "")
-    if role == "branch" and branch_id:
-        users = users.filter(userprofile__branch_id=branch_id)
-
-    # ✅ فلترة بالتفعيل (active_status)
-    active_status = request.GET.get("active_status", "")
-    if active_status == "active":
-        users = users.filter(is_active=True)
-    elif active_status == "inactive":
-        users = users.filter(is_active=False)
-
-    # ✅ جلب الفروع
-    from .models import Branch
-    branches = Branch.objects.all()
-
-    # ✅ POST (تفعيل / إلغاء تفعيل / حذف / إعادة تعيين)
+    # ✅ POST (حذف أو إعادة تعيين باسورد)
     if request.method == "POST":
         if "delete_user" in request.POST:
             user_id = request.POST.get("delete_user")
             User.objects.filter(id=user_id).delete()
-
-        elif "toggle_active" in request.POST:
-            user_id = request.POST.get("toggle_active")
-            u = User.objects.get(id=user_id)
-            u.is_active = not u.is_active
-            u.save()
 
         elif "reset_password" in request.POST:
             user_id = request.POST.get("reset_password")
@@ -1847,15 +1682,13 @@ def manage_users(request):
                 u.userprofile.last_password_reset = timezone.now()
                 u.userprofile.save()
 
+        # ✅ بعد أي أكشن: رجع لنفس الرابط بالفلترة الحالية
         return redirect(request.get_full_path())
 
     return render(request, "orders/manage_users.html", {
         "users": users,
         "username": username,
         "role": role,
-        "branches": branches,
-        "branch_id": branch_id,
-        "active_status": active_status,  # 🆕 علشان نحافظ على الفلتر
     })
 #---------------------------------------------------------------
 @login_required
@@ -2933,6 +2766,7 @@ def add_production_request(request):
         "selected_cat": selected_cat,
         "already_confirmed": already_confirmed_section,
     })
+
 #-----------------------------------------------------
 @login_required
 @role_required(["control", "admin","production"])
@@ -3174,4 +3008,5 @@ def export_production_excel(request):
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     wb.save(response)
     return response
+
 #-----------------------------------------------------

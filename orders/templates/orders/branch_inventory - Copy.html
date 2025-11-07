@@ -1,0 +1,193 @@
+{% extends "orders/base.html" %}
+{% block title %}📦 المخزون{% endblock %}
+
+{% block content %}
+<div class="inventory-dashboard">
+
+    <!-- ✅ الهيدر بنفس شكل سجل العمليات -->
+    <div class="header-fixed">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="m-0" style="font-size: 1.5rem;">
+          📦 المخزون
+          {% if branch %}
+            - {{ branch.name }}
+          {% elif branches %}
+            - كل الفروع
+          {% endif %}
+        </h1>
+      </div>
+
+      <!-- 🔽 الفلاتر -->
+      <form method="get" id="filterForm" class="filters">
+        <div class="row g-3 align-items-end">
+
+          {% if branches %}
+          <div class="col-md-3">
+            <label class="form-label">الفرع:</label>
+            <select name="branch" class="form-select" onchange="this.form.submit()">
+              <option value="all" {% if not selected_branch %}selected{% endif %}>-- كل الفروع --</option>
+              {% for b in branches %}
+                <option value="{{ b.id }}" {% if selected_branch == b.id %}selected{% endif %}>
+                  {{ b.name }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          {% endif %}
+
+          <div class="col-md-3">
+            <label class="form-label">القسم:</label>
+            <select name="category" class="form-select" onchange="this.form.submit()">
+              <option value="">-- كل الأقسام --</option>
+              {% for c in categories %}
+                <option value="{{ c.id }}" {% if selected_category == c.id %}selected{% endif %}>
+                  {{ c.name }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="col-md-3">
+            <label class="form-label">بحث:</label>
+            <input type="text" class="form-control" name="q" value="{{ query|default:'' }}" placeholder="اسم المنتج" id="searchInput" autofocus>
+          </div>
+
+          <div class="col-md-3">
+            <button type="submit" class="btn btn-success custom-btn">عرض</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <!-- ✅ الجدول بنفس ستايل سجل العمليات -->
+    <div class="table-wrapper">
+      <table class="styled-table">
+        <thead>
+          <tr>
+            <th>المنتج</th>
+            <th>القسم</th>
+            {% if branches %}<th>الفرع</th>{% endif %}
+            <th>الكمية المتوفرة</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for inv in inventories %}
+          <tr>
+            <td>{{ inv.product.name }}</td>
+            <td>{{ inv.product.category.name }}</td>
+            {% if branches %}<td>{{ inv.branch.name }}</td>{% endif %}
+            <td>{{ inv.quantity }}</td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="{% if branches %}4{% else %}3{% endif %}" class="text-center">❌ لا توجد منتجات مطابقة.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+</div>
+<script>
+  // لما الصفحة تخلص تحميل
+  window.addEventListener('load', function() {
+    const input = document.getElementById('searchInput');
+    if (input) {
+      // لما العنصر ياخد فوكس يحدد النص كله تلقائيًا
+      input.focus();
+      input.select();
+      // كمان لو رجعت فوكس عليه بعدين يحدد النص برضه
+      input.addEventListener('focus', () => input.select());
+    }
+  });
+</script>
+<style>
+  html, body {
+    height: 100%;
+    margin: 0;
+    overflow: hidden; /* يمنع Scroll خارجي */
+  }
+
+  .inventory-dashboard {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .header-fixed {
+    position: sticky;
+    top: 0;
+    background: #fff;
+    z-index: 20;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #ddd;
+  }
+
+  .filters { margin-bottom: 10px; }
+
+  .table-wrapper {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+  }
+
+  .styled-table {
+    width: 70%;              /* نفس سجل العمليات */
+    margin: 20px auto;       /* يخلي الجدول في النص */
+    border-collapse: collapse;
+    font-size: 15px;
+  }
+
+  .styled-table th, .styled-table td {
+    padding: 6px 8px;        /* نفس سجل العمليات */
+    text-align: center;
+    border: 1px solid #eee;
+  }
+
+  .styled-table th {
+    position: sticky;
+    top: 0;
+    background: #000;
+    color: #fff;
+    font-weight: bold;
+    z-index: 5;
+    font-size: 16px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  }
+
+  .styled-table tbody tr:hover {
+    background: #f8d7da; /* أحمر فاتح */
+    transition: background 0.2s ease-in-out;
+    cursor: pointer;
+  }
+
+  h1.m-0 {
+    font-size: 1.5rem !important;
+    font-weight: bold;
+    margin: 0;
+  }
+  .custom-btn {
+      padding: 8px 25px;
+      font-size: 15px;
+      font-weight: 600;
+      border-radius: 8px;
+      transition: all 0.3s ease-in-out;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      background: linear-gradient(135deg, #28a745, #34ce57); /* جراديانت افتراضي */
+      border: none;
+    }
+
+    .custom-btn:hover {
+      background: linear-gradient(135deg, #218838, #28a745); /* جراديانت أغمق عند الهوفر */
+      color: #fff;
+      transform: translateY(-2px);   /* يطلع لفوق */
+      box-shadow: 0 6px 12px rgba(0,0,0,0.2); /* ظل أقوى */
+    }
+
+    .custom-btn:active {
+      transform: translateY(0); /* يرجع مكانه لما يتداس */
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    }
+</style>
+{% endblock %}

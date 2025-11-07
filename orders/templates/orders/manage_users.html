@@ -6,11 +6,14 @@
 
   <!-- ✅ الفلاتر -->
   <form method="get" class="row mb-3 g-2">
-    <div class="col-md-4">
+    <!-- 🔍 البحث بالاسم -->
+    <div class="col-md-3">
       <input type="text" name="username" class="form-control" placeholder="🔍 ابحث بالاسم"
              value="{{ username|default:'' }}">
     </div>
-    <div class="col-md-4">
+
+    <!-- 👥 الفلتر حسب الدور -->
+    <div class="col-md-3">
       <select name="role" class="form-select" onchange="this.form.submit()">
         <option value="">-- اختر النوع --</option>
         <option value="admin" {% if role == "admin" %}selected{% endif %}>👑 مدير</option>
@@ -27,17 +30,44 @@
         <option value="hr_help" {% if role == "hr_help" %}selected{% endif %}>🤝 HR Help</option>
       </select>
     </div>
-  </form>
 
+    <!-- 🟢🔴 فلتر حالة التفعيل (يظهر دايمًا) -->
+    <div class="col-md-3">
+      <select name="active_status" class="form-select" onchange="this.form.submit()">
+        <option value="">-- حالة التفعيل --</option>
+        <option value="active" {% if active_status == "active" %}selected{% endif %}>🟢 المستخدمين النشطين</option>
+        <option value="inactive" {% if active_status == "inactive" %}selected{% endif %}>🔴 المستخدمين غير المفعلين</option>
+      </select>
+    </div>
+
+    <!-- 🏪 فلتر الفروع (يظهر فقط لو الدور = فرع) -->
+    {% if role == "branch" %}
+    <div class="col-md-3">
+      <select name="branch_id" class="form-select" onchange="this.form.submit()">
+        <option value="">-- اختر الفرع --</option>
+        {% for b in branches %}
+          <option value="{{ b.id }}" {% if branch_id == b.id|stringformat:"s" %}selected{% endif %}>
+            {{ b.name }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+  </form>
   <!-- ✅ جدول المستخدمين -->
   <table class="table table-striped table-bordered">
     <thead class="table-dark">
       <tr>
         <th>#</th>
         <th>اسم المستخدم</th>
-        <th>البريد</th>
+        <!-- <th>البريد</th> -->
         <th>الدور</th>
+        {% if role == "branch" %}
+        <th>الفرع</th>
+        {% endif %}
         <th>آخر إعادة تعيين</th> <!-- ✨ الجديد -->
+        <th>الحالة</th>
+        <th>آخر تسجيل دخول</th>
         <th>إجراءات</th>
       </tr>
     </thead>
@@ -46,8 +76,17 @@
         <tr>
           <td>{{ forloop.counter }}</td>
           <td>{{ u.username }}</td>
-          <td>{{ u.email }}</td>
+          <!-- <td>{{ u.email }}</td> -->
           <td>{{ u.userprofile.get_role_display }}</td>
+          {% if role == "branch" %}
+          <td>
+            {% if u.userprofile.branch %}
+              {{ u.userprofile.branch.name }}
+            {% else %}
+              -
+            {% endif %}
+          </td>
+        {% endif %}
           <td>
             {% if u.userprofile.last_password_reset %}
               {{ u.userprofile.last_password_reset|date:"Y-m-d H:i:s" }}
@@ -56,15 +95,52 @@
             {% endif %}
           </td>
           <td>
-          <form method="post" action="{% url 'manage_users' %}?username={{ username }}&role={{ role }}" class="d-inline">
-            {% csrf_token %}
-            <button type="submit" name="reset_password" value="{{ u.id }}" class="btn btn-sm btn-warning">🔑 إعادة تعيين</button>
-          </form>
+            {% if u.is_active %}
+              🟢 نشط
+            {% else %}
+              🔴 غير مفعل
+            {% endif %}
+          </td>
+          <td>
+            {% if u.last_login %}
+              {{ u.last_login|date:"Y-m-d H:i:s" }}
+            {% else %}
+              -
+            {% endif %}
+          </td>
+          <td>
+            <form method="post"
+                  action="{% url 'manage_users' %}?username={{ username }}&role={{ role }}{% if branch_id %}&branch_id={{ branch_id }}{% endif %}"
+                  class="d-inline">
+              {% csrf_token %}
+              <button type="submit" name="reset_password" value="{{ u.id }}" class="btn btn-sm btn-warning">
+                🔑 إعادة تعيين
+              </button>
+            </form>
+            <!-- تفعيل / إلغاء تفعيل -->
+            <form method="post"
+                  action="{% url 'manage_users' %}?username={{ username }}&role={{ role }}{% if branch_id %}&branch_id={{ branch_id }}{% endif %}"
+                  class="d-inline">
+              {% csrf_token %}
+              {% if u.is_active %}
+                <button type="submit" name="toggle_active" value="{{ u.id }}" class="btn btn-sm btn-secondary">
+                  🚫 إلغاء تفعيل
+                </button>
+              {% else %}
+                <button type="submit" name="toggle_active" value="{{ u.id }}" class="btn btn-sm btn-success">
+                  ✅ تفعيل
+                </button>
+              {% endif %}
+            </form>
 
-          <form method="post" action="{% url 'manage_users' %}?username={{ username }}&role={{ role }}" class="d-inline">
-            {% csrf_token %}
-            <button type="submit" name="delete_user" value="{{ u.id }}" class="btn btn-sm btn-danger">🗑 حذف</button>
-          </form>
+            <form method="post"
+                  action="{% url 'manage_users' %}?username={{ username }}&role={{ role }}{% if branch_id %}&branch_id={{ branch_id }}{% endif %}"
+                  class="d-inline">
+              {% csrf_token %}
+              <button type="submit" name="delete_user" value="{{ u.id }}" class="btn btn-sm btn-danger">
+                🗑 حذف
+              </button>
+            </form>
         </td>
 
         </tr>
@@ -76,4 +152,11 @@
     </tbody>
   </table>
 </div>
+<style>
+  /* ✅ توسيط النص في رؤوس الأعمدة فقط */
+  .table thead th {
+    text-align: center;
+    vertical-align: middle;
+  }
+</style>
 {% endblock %}

@@ -45,7 +45,6 @@ urlpatterns = [
     path("production/request/", views.add_production_request, name="add_production_request"),
     path("production/overview/", views.production_overview, name="production_overview"),
     path("production/overview/export/", views.export_production_excel, name="export_production_excel"),
-
-
+    path("inventory/update-quantity/", views.update_inventory_quantity, name="update_inventory_quantity"),
 
 ]

@@ -78,8 +78,6 @@
           ➕ إضافة
         </button>
       </form>
-      <!-- 🟢 مكان عرض الرسالة -->
-      <div id="addMessage" class="mt-2 text-success fw-bold"></div>
     </div>
   </div>
 
@@ -106,30 +104,30 @@
         </thead>
         <tbody>
           {% for r in requests_today %}
-          <tr data-id="{{ r.id }}">
-            <td><input type="checkbox" name="selected_items" value="{{ r.id }}"></td>
-            <td class="fw-bold">{{ r.product.name }}</td>
-            <td style="vertical-align: middle;">
-              <div class="d-flex justify-content-center align-items-center gap-2 m-0 p-0">
-                <input type="number"
-                       name="quantities[{{ r.id }}]"
-                       value="{{ r.default_quantity|stringformat:'.2f' }}"
-                       {% if r.product.unit == 'kg' %}
-                         min="0.00" step="0.01"
-                       {% else %}
-                         min="0" step="1"
-                       {% endif %}
-                       class="form-control form-control-sm text-center fw-bold"
-                       style="width: 80px; height: 32px;">
-                <button type="submit" name="update_item" value="{{ r.id }}" class="btn btn-warning btn-sm px-3 py-1">✏️</button>
-                <button type="button" class="btn btn-danger btn-sm px-3 py-1 delete-one" data-id="{{ r.id }}">🗑️</button>
-              </div>
-            </td>
-            <td><span class="badge bg-secondary">{{ r.product.get_unit_display }}</span></td>
-            <td>{{ r.updated_at|date:"Y-m-d H:i" }}</td>
-          </tr>
+            <tr>
+              <td><input type="checkbox" name="selected_items" value="{{ r.id }}"></td>
+              <td class="fw-bold">{{ r.product.name }}</td>
+              <td style="vertical-align: middle;">
+                <div class="d-flex justify-content-center align-items-center gap-2 m-0 p-0">
+                  <input type="number"
+                         name="quantities[{{ r.id }}]"
+                         value="{{ r.default_quantity|stringformat:'.2f' }}"
+                         {% if r.product.unit == 'kg' %}
+                           min="0.00" step="0.01"
+                         {% else %}
+                           min="0" step="1"
+                         {% endif %}
+                         class="form-control form-control-sm text-center fw-bold"
+                         style="width: 80px; height: 32px;">
+                  <button type="submit" name="update_item" value="{{ r.id }}" class="btn btn-warning btn-sm px-3 py-1">✏️</button>
+                  <button type="submit" name="delete_item" value="{{ r.id }}" class="btn btn-danger btn-sm px-3 py-1">🗑️</button>
+                </div>
+              </td>
+              <td><span class="badge bg-secondary">{{ r.product.get_unit_display }}</span></td>
+              <td>{{ r.updated_at|date:"Y-m-d H:i" }}</td>
+            </tr>
           {% empty %}
-          <tr><td colspan="5" class="text-muted">🚫 لا يوجد منتجات</td></tr>
+            <tr><td colspan="5" class="text-muted">🚫 لا يوجد منتجات</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -198,119 +196,6 @@ document.addEventListener("DOMContentLoaded", function() {
   } else if (subId && subName) {
     showProducts(subId, subName);
   }
-});
-/////----------------------------------
-document.addEventListener("DOMContentLoaded", function() {
-
-  // 🗑️ حذف محدد (checkboxات)
-  const deleteSelectedBtn = document.querySelector("button[name='delete_selected']");
-  if (deleteSelectedBtn) {
-    deleteSelectedBtn.closest("form").addEventListener("submit", function(e) {
-      e.preventDefault();
-      const form = e.target;
-      const formData = new FormData(form);
-      formData.append("delete_selected", "1");
-
-      fetch("", {
-        method: "POST",
-        headers: {
-          "X-Requested-With": "XMLHttpRequest",
-          "X-CSRFToken": formData.get("csrfmiddlewaretoken"),
-        },
-        body: formData,
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && data.deleted_ids) {
-          data.deleted_ids.forEach(id => {
-            const row = document.querySelector(`tr[data-id='${id}']`);
-            if (row) {
-              row.style.transition = "0.4s";
-              row.style.backgroundColor = "#f8d7da";
-              row.style.opacity = "0";
-              setTimeout(() => row.remove(), 400);
-            }
-          });
-        } else if (data.delete_all) {
-          document.querySelectorAll("tbody tr").forEach(r => r.remove());
-        } else {
-          alert(data.message || "حدث خطأ أثناء الحذف.");
-        }
-      })
-      .catch(err => console.error(err));
-    });
-  }
-
-  // 🗑️ حذف فردي
-  document.querySelectorAll(".delete-one").forEach(btn => {
-    btn.addEventListener("click", function() {
-      const id = this.dataset.id;
-      const row = this.closest("tr");
-      const formData = new FormData();
-      formData.append("delete_item", id);
-
-      fetch("", {
-        method: "POST",
-        headers: {
-          "X-Requested-With": "XMLHttpRequest",
-          "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]").value,
-        },
-        body: formData,
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) {
-          row.style.transition = "0.4s";
-          row.style.backgroundColor = "#f8d7da";
-          row.style.opacity = "0";
-          setTimeout(() => row.remove(), 400);
-        } else {
-          alert(data.message || "حدث خطأ أثناء الحذف.");
-        }
-      })
-      .catch(err => console.error(err));
-    });
-  });
-});
-// ✅ إضافة منتج جديد بالـAJAX مع رسالة نجاح
-document.addEventListener("DOMContentLoaded", function() {
-  const addForm = document.getElementById("addForm");
-  if (!addForm) return;
-
-  addForm.addEventListener("submit", function(e) {
-    e.preventDefault(); // منع الريفريش الكامل
-
-    const form = e.target;
-    const formData = new FormData(form);
-    formData.append("add_item", "1");
-
-    fetch("", {
-      method: "POST",
-      headers: {
-        "X-Requested-With": "XMLHttpRequest",
-        "X-CSRFToken": formData.get("csrfmiddlewaretoken"),
-      },
-      body: formData
-    })
-    .then(res => res.json())
-    .then(data => {
-      // 🟢 عرض رسالة النجاح
-      const msgDiv = document.getElementById("addMessage");
-      if (msgDiv) {
-        msgDiv.textContent = data.message || "تمت العملية بنجاح.";
-        msgDiv.style.color = data.success ? "green" : "red";
-        msgDiv.style.opacity = "1";
-        msgDiv.style.transition = "opacity 0.5s ease";
-        setTimeout(() => { msgDiv.style.opacity = "0"; }, 3000);
-      }
-
-      // 🧹 تفريغ حقل الكمية بعد الإضافة الناجحة
-      if (data.success) {
-        form.querySelector("#quantityInput").value = "";
-      }
-    })
-    .catch(err => console.error("❌ خطأ أثناء الإضافة:", err));
-  });
 });
 </script>
 

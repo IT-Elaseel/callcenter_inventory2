@@ -16,32 +16,40 @@ class UserCreateForm(forms.ModelForm):
         widget=forms.Select(attrs={"class": "form-select"}),
         label="اختر الفرع"
     )
+
     email = forms.EmailField(
         required=False,
         widget=forms.EmailInput(attrs={"class": "form-control", "placeholder": "البريد الإلكتروني"}),
         label="البريد الإلكتروني"
     )
 
+    # ✅ الحقل الجديد
+    phone = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "رقم الموبايل (مثال: 01012345678)"}),
+        label="رقم الموبايل"
+    )
+
     class Meta:
         model = User
-        fields = ["username", "email", "role", "branch"]
+        fields = ["username", "email", "phone", "role", "branch"]
 
-        widgets = {
-            "username": forms.TextInput(attrs={
-                "class": "form-control",
-                "placeholder": "اسم المستخدم"
-            }),
-            "email": forms.EmailInput(attrs={
-                "class": "form-control",
-                "placeholder": "البريد الإلكتروني"
-            }),
-        }
+    # ✅ التحقق من رقم الموبايل
+    def clean_phone(self):
+        phone = self.cleaned_data.get("phone", "").strip()
+        if phone:
+            if not phone.isdigit():
+                raise forms.ValidationError("❌ رقم الموبايل يجب أن يحتوي على أرقام فقط.")
+            if not phone.startswith("0"):
+                raise forms.ValidationError("❌ رقم الموبايل يجب أن يبدأ بالرقم 0.")
+            if len(phone) != 11:
+                raise forms.ValidationError("❌ رقم الموبايل يجب أن يتكون من 11 رقم بالضبط.")
+        return phone
 
     def clean(self):
         cleaned_data = super().clean()
         role = cleaned_data.get("role")
         branch = cleaned_data.get("branch")
-
         if role == "branch" and not branch:
             self.add_error("branch", "يجب اختيار الفرع لموظف الفرع")
         return cleaned_data
@@ -49,30 +57,27 @@ class UserCreateForm(forms.ModelForm):
     def save(self, commit=True):
         user = super().save(commit=False)
         user.set_password(settings.DEFAULT_USER_PASSWORD)
-
         role = self.cleaned_data["role"]
 
-        # تعيين الصلاحيات
+        # الصلاحيات
         if role == "admin":
             user.is_staff = True
             user.is_superuser = True
         elif role == "callcenter":
             user.is_staff = True
             user.is_superuser = False
-        else:  # branch
+        else:
             user.is_staff = False
             user.is_superuser = False
 
         if commit:
             user.save()
-
-            # إضافة للجروب
             group, _ = Group.objects.get_or_create(name=role)
             user.groups.add(group)
 
-            # تحديث UserProfile
             profile, _ = UserProfile.objects.get_or_create(user=user)
             profile.role = role
+            profile.phone = self.cleaned_data.get("phone")  # ✅ حفظ رقم الموبايل
             if role == "branch":
                 profile.branch = self.cleaned_data.get("branch")
             else:

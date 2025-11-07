@@ -153,7 +153,7 @@
                 <!--   🧑‍💼 الموارد البشرية -->
               <div class="dropdown d-inline-block">
                 <a class="dropdown-toggle btn btn-sm text-white" href="#" role="button" data-bs-toggle="dropdown">
-                  🧑‍💼 الموارد البشرية
+                🧑الموارد البشرية
                 </a>
                 <ul class="dropdown-menu shadow">
                   <li><a class="dropdown-item" href="{% url 'hr:applicant_list' %}">📋طلبات التوظيف</a></li>
@@ -275,8 +275,10 @@
     </div>
   </div>
 
+    <main class="page-content" style="padding: 30px 0; min-height: 80vh; background: #f8f9fa;">
+  {% block content %}{% endblock %}
+</main>
 
-    {% block content %}{% endblock %}
 
     <!-- ✅ Modal تغيير كلمة المرور -->
     <div class="modal fade" id="changePasswordModal" tabindex="-1" aria-hidden="true">
